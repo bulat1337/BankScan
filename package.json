@@ -1,0 +1,25 @@
+{
+  "name": "alpha-api-local-bridge",
+  "version": "0.1.0",
+  "description": "Local bridge for extracting balance candidates from an authenticated Alfa-Bank dashboard tab via Chrome DevTools Protocol.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:bulat1337/AlphaApi.git"
+  },
+  "keywords": [
+    "alfabank",
+    "banking",
+    "chrome-devtools-protocol",
+    "local-automation"
+  ],
+  "scripts": {
+    "scan": "node scripts/alpha-dashboard-read.mjs",
+    "scan:reload": "node scripts/alpha-dashboard-read.mjs --reload"
+  }
+}
