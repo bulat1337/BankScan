@@ -1831,6 +1831,340 @@ function buildVtbCreditCardDetailExpression() {
   })()`;
 }
 
+function buildTBankCreditCardDiscoveryExpression() {
+  return `(() => {
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const amountPattern = /[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?\\s?(?:₽|руб\\.?|RUB|USD|EUR|€|\\$)/iu;
+    const extractMask = (text) =>
+      normalize(text).match(/(?:··|••|\\*{2,}|•{2,})\\s?(\\d{2,4})/u)?.[1] ??
+      normalize(text).match(/\\b(\\d{4})\\b/u)?.[1] ??
+      null;
+    const isVisible = (node) => {
+      if (!(node instanceof HTMLElement)) {
+        return false;
+      }
+
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+
+    const candidates = [];
+    const candidateKeys = new Set();
+
+    for (const link of Array.from(document.querySelectorAll('a[href*="/mybank/accounts/credit/"]'))) {
+      if (!(link instanceof HTMLAnchorElement) || !isVisible(link)) {
+        continue;
+      }
+
+      const detailUrl = new URL(link.getAttribute('href'), location.origin).href;
+      const widget =
+        link.closest('[data-qa-type^="widget widget-credit"]') ??
+        link.closest('li') ??
+        link.closest('[data-qa-type="molecule-account-cardLarge"]') ??
+        link;
+      const widgetText = normalize(widget instanceof HTMLElement ? widget.innerText || '' : '');
+      const widgetLines =
+        widget instanceof HTMLElement
+          ? String(widget.innerText || '')
+              .split(/\\n+/u)
+              .map((line) => normalize(line))
+              .filter(Boolean)
+          : [];
+      const linkText = normalize(link.innerText || link.textContent || '');
+      const amountText =
+        normalize(
+          widgetText.match(amountPattern)?.[0] ||
+          linkText.match(amountPattern)?.[0] ||
+          '',
+        ) || null;
+      const amountIndex = widgetLines.findIndex((line) => amountPattern.test(line));
+      const parsedLabel =
+        amountIndex >= 0
+          ? normalize(
+              widgetLines.find(
+                (line, index) =>
+                  index > amountIndex &&
+                  /[A-Za-zА-Яа-яЁё]/u.test(line) &&
+                  !/^(?:Пополните из другого банка|Новый счет или продукт|Новый счёт или продукт|Доступно сейчас)$/iu.test(line) &&
+                  !/^Еще\\s+\\d+/iu.test(line) &&
+                  !/^\\d+\\s+балл/u.test(line),
+              ) || '',
+            )
+          : '';
+      const label =
+        parsedLabel ||
+        normalize(
+          widgetText
+            .replace(amountText || '', '')
+            .replace(/(?:··|••|\\*{2,}|•{2,})\\s?\\d{2,4}/gu, '')
+            .replace(/\\b\\d{4}\\b/gu, '')
+            .split(/(?=Пополните из другого банка|Новый счет или продукт|Новый счёт или продукт)/u)[0] ||
+            '',
+        );
+      const accountMask = extractMask(
+        normalize(
+          widget instanceof HTMLElement
+            ? widget.querySelector('[data-qa-type="tui/thumbnail-card"]')?.innerText ||
+              widget.querySelector('[data-qa-type="infopanel-cards-card click-area"]')?.innerText ||
+              widgetText
+            : widgetText,
+        ),
+      );
+      const key = [detailUrl, label, accountMask || ''].join('|');
+
+      if (candidateKeys.has(key)) {
+        continue;
+      }
+
+      candidateKeys.add(key);
+      candidates.push({
+        detailUrl,
+        label: label || 'Кредитная карта',
+        amountText,
+        accountMask,
+        text: linkText || widgetText || null,
+      });
+    }
+
+    return {
+      url: location.href,
+      candidates,
+    };
+  })()`;
+}
+
+function buildTBankCreditCardDetailExpression() {
+  return `(() => {
+    const MONTH_PATTERN = '(?:январ[ья]|феврал[ья]|марта|апрел[ья]|мая|июн[ья]|июл[ья]|августа|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])';
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const unique = (values) => Array.from(new Set(values.filter(Boolean)));
+    const amountSource = '[+-]?(?:\\\\d{1,3}(?:[\\\\s\\\\u00A0]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{2})?';
+    const amountWithCurrencySource = amountSource + '\\\\s?(?:₽|руб\\\\.?|RUB|USD|EUR|€|\\\\$)';
+    const amountPattern = new RegExp(amountWithCurrencySource, 'iu');
+    const bodyText = normalize(document.body?.innerText || '');
+    const url = location.href;
+    const getQaText = (qaType) =>
+      normalize(document.querySelector('[data-qa-type="' + CSS.escape(qaType) + '"]')?.innerText || '');
+    const getQaTexts = (qaType) =>
+      unique(
+        Array.from(document.querySelectorAll('[data-qa-type="' + CSS.escape(qaType) + '"]'))
+          .map((node) => normalize(node.innerText || ''))
+          .filter(Boolean),
+      );
+    const extractAmountValue = (amountText) => {
+      const numeric = normalize(amountText).match(/[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?/u);
+      if (!numeric) {
+        return null;
+      }
+
+      return Number.parseFloat(numeric[0].replace(/[\\s\\u00A0]/g, '').replace(',', '.'));
+    };
+    const extractCurrency = (amountText) => {
+      if (amountText.includes('₽') || /руб/i.test(amountText)) {
+        return 'RUB';
+      }
+      if (amountText.includes('$') || /USD/i.test(amountText)) {
+        return 'USD';
+      }
+      if (amountText.includes('€') || /EUR/i.test(amountText)) {
+        return 'EUR';
+      }
+      return null;
+    };
+    const formatCurrency = (value, currency) => {
+      if (value == null || !currency) {
+        return null;
+      }
+
+      return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    };
+    const firstAmount = (text) => normalize(normalize(text).match(amountPattern)?.[0] || '');
+    const extractDate = (text) =>
+      normalize(
+        normalize(text).match(new RegExp('(?:^|[^\\\\d])(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')(?=$|[^а-яё])', 'iu'))?.[1] || '',
+      );
+    const extractDateAfter = (text, labelPattern) =>
+      normalize(
+        normalize(text).match(new RegExp('(?:' + labelPattern + ')[^\\\\d]{0,12}(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')', 'iu'))?.[1] || '',
+      );
+    const extractMask = (text) =>
+      normalize(text).match(/(?:··|••|\\*{2,}|•{2,})\\s?(\\d{2,4})/u)?.[1] ??
+      normalize(text).match(/\\b(\\d{4})\\b/u)?.[1] ??
+      null;
+    const extractLabeledAmount = (labelPattern) => {
+      const regex = new RegExp('(?:' + labelPattern + ')[^\\\\d+-]{0,40}(' + amountWithCurrencySource + ')', 'iu');
+      return normalize(bodyText.match(regex)?.[1] || '');
+    };
+    const extractSentence = (labelPattern) => {
+      const regex = new RegExp('((?:' + labelPattern + ')[^.]{0,180})', 'iu');
+      return normalize(bodyText.match(regex)?.[1] || '');
+    };
+    const getRow = (qaType) => {
+      const row = document.querySelector('[data-qa-type="' + CSS.escape(qaType) + '"]');
+      if (!(row instanceof HTMLElement)) {
+        return null;
+      }
+
+      const valueText =
+        normalize(row.querySelector('[data-qa-type="account-details-row-value"]')?.innerText || '') ||
+        firstAmount(row.innerText || '');
+
+      return {
+        text: normalize(row.innerText || ''),
+        valueText: valueText || null,
+      };
+    };
+
+    const routeMatch = url.match(/\\/mybank\\/accounts\\/credit\\/([^/?#]+)/u);
+    const creditSignals = [];
+
+    if (routeMatch) {
+      creditSignals.push('credit_route');
+    }
+    if (/кредитн(?:ая|ой|ый)?\\s+карт/i.test([document.title, bodyText].join(' '))) {
+      creditSignals.push('credit_card_text');
+    }
+    if (/кредитный лимит/i.test(bodyText) && /задолженность/i.test(bodyText)) {
+      creditSignals.push('credit_detail_rows');
+    }
+
+    const isCreditCard = creditSignals.length > 0;
+    if (!isCreditCard) {
+      return {
+        isCreditCard: false,
+        url,
+        title: document.title,
+        creditSignals,
+      };
+    }
+
+    const label =
+      getQaText('infopanel-title.value') ||
+      normalize(document.querySelector('h1,h2')?.innerText || '') ||
+      'Кредитная карта';
+    const availableHeaderText =
+      firstAmount(getQaText('infopanel-balance-value')) ||
+      extractLabeledAmount('доступно(?:\\s+сейчас)?|доступный остаток|можно потратить') ||
+      null;
+    const creditLimitRow = getRow('account-details-row-pay-credit-limit');
+    const debtRow = getRow('account-details-row-full-debt');
+    const contractNumberMatch =
+      bodyText.match(/Номер договора\\s+(\\d{6,})/u) ??
+      bodyText.match(/Договор\\s+(\\d{6,})/u);
+    const contractNumber = contractNumberMatch?.[1] ?? null;
+    const cardTexts = unique([
+      ...getQaTexts('infopanel-cards-card click-area'),
+      ...getQaTexts('tui/thumbnail-card'),
+      getQaText('infopanel-cards'),
+    ]);
+    const linkedCardMasks = unique(cardTexts.map((text) => extractMask(text)));
+    const statementPanelText =
+      getQaText('statementsPanel') ||
+      getQaText('desktopRickPayments') ||
+      getQaText('statementsPanel-subtitle-text') ||
+      getQaText('statementsCardText') ||
+      '';
+    const paymentStatusText =
+      statementPanelText ||
+      extractSentence('минимальн(?:ый|ого)?\\s+плат(?:е|ё)ж|плат(?:е|ё)ж[^.]{0,30}до|внести до|пришлем выписку') ||
+      null;
+    const availableAmountValue = extractAmountValue(availableHeaderText || '');
+    const debtAmountText = debtRow?.valueText || extractLabeledAmount('задолженность|общий долг|долг|к оплате|к погашению') || null;
+    const debtAmountValue = extractAmountValue(debtAmountText || '');
+    const creditLimitText = creditLimitRow?.valueText || extractLabeledAmount('кредитный лимит|лимит') || null;
+    const creditLimitValue = extractAmountValue(creditLimitText || '');
+    const paymentAmountText =
+      extractLabeledAmount('минимальн(?:ый|ого)?\\s+плат(?:е|ё)ж|к оплате|внести') || null;
+    const statementDateText = normalize(
+      statementPanelText.match(new RegExp('(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')\\\\s+пришл(?:е|ё)м\\\\s+выписку', 'iu'))?.[1] || '',
+    ) || null;
+    const paymentDueDateText =
+      normalize(
+        statementPanelText.match(new RegExp('внести\\\\s+до\\\\s+(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')', 'iu'))?.[1] || '',
+      ) ||
+      normalize(
+        statementPanelText.match(new RegExp('плат(?:е|ё)ж[^.]{0,30}до\\\\s+(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')', 'iu'))?.[1] || '',
+      ) ||
+      extractDate(paymentStatusText || '') ||
+      null;
+    const graceCandidate =
+      extractSentence('льготн(?:ый|ого)?\\s+период|без процентов|беспроцентный период') || '';
+    const gracePeriodText =
+      graceCandidate &&
+      !graceCandidate.includes('?') &&
+      /(до\\s+\\d{1,2}\\s+(?:январ[ья]|феврал[ья]|марта|апрел[ья]|мая|июн[ья]|июл[ья]|августа|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])|\\d+\\s+дн(?:ей|я|ь)?)/iu.test(graceCandidate)
+        ? graceCandidate
+        : null;
+    const gracePeriodUntilText = gracePeriodText
+      ? extractDateAfter(gracePeriodText, 'до') || extractDate(gracePeriodText)
+      : null;
+    const currency = extractCurrency(
+      availableHeaderText || debtAmountText || creditLimitText || paymentAmountText || '',
+    );
+    let availableAmountText = availableHeaderText || null;
+    let availableAmountResolvedValue = availableAmountValue;
+    let creditLimitResolvedText = creditLimitText || null;
+    let creditLimitResolvedValue = creditLimitValue;
+    let creditLimitSource = creditLimitText ? 'page_text' : null;
+
+    if (
+      availableAmountResolvedValue == null &&
+      creditLimitResolvedValue != null &&
+      debtAmountValue != null
+    ) {
+      availableAmountResolvedValue = creditLimitResolvedValue - debtAmountValue;
+      availableAmountText = formatCurrency(availableAmountResolvedValue, currency);
+    }
+
+    if (
+      creditLimitResolvedValue == null &&
+      availableAmountResolvedValue != null &&
+      debtAmountValue != null
+    ) {
+      creditLimitResolvedValue = availableAmountResolvedValue + debtAmountValue;
+      creditLimitResolvedText = formatCurrency(creditLimitResolvedValue, currency);
+      creditLimitSource = 'derived_available_plus_total_debt';
+    }
+
+    return {
+      isCreditCard: true,
+      productType: 'credit_card',
+      label,
+      detailUrl: url,
+      routeType: 'credit',
+      productId: routeMatch?.[1] ?? null,
+      accountId: contractNumber || routeMatch?.[1] || null,
+      accountMask: linkedCardMasks[0] ?? null,
+      contractNumberText: contractNumber ? 'Номер договора ' + contractNumber : null,
+      linkedCardMasks,
+      availableAmountText,
+      availableAmountValue: availableAmountResolvedValue,
+      debtAmountText,
+      debtAmountValue,
+      debtStatusText: debtRow?.text || null,
+      creditLimitText: creditLimitResolvedText,
+      creditLimitValue: creditLimitResolvedValue,
+      creditLimitSource,
+      paymentStatusText,
+      paymentDueDateText,
+      paymentAmountText,
+      statementDateText,
+      gracePeriodText,
+      gracePeriodUntilText,
+      currency,
+      creditSignals,
+      title: document.title,
+      url,
+      rawSummaryText: bodyText.slice(0, 1600),
+    };
+  })()`;
+}
+
 async function writeJson(filePath, value) {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -1881,6 +2215,18 @@ async function restorePage(client, originUrl, waitMs, options = {}) {
   await client.send('Page.navigate', { url: originUrl });
   await wait(waitMs);
   return stabilizePage(client, originUrl, waitMs);
+}
+
+function shouldRetryTbankDashboardScan(scan, creditCards = []) {
+  if (!scan || scan.url !== BANKS.tbank.entryUrl) {
+    return false;
+  }
+
+  if ((creditCards?.length ?? 0) > 0) {
+    return false;
+  }
+
+  return (scan.balances?.length ?? 0) <= 1;
 }
 
 function dedupeCreditCards(cards) {
@@ -2113,12 +2459,61 @@ async function collectVtbCreditCards(client, bank, scan, options) {
   return dedupeCreditCards(cards);
 }
 
+async function collectTbankCreditCards(client, bank, scan, options) {
+  const cards = [];
+  const currentDetail = await evaluatePageExpression(client, buildTBankCreditCardDetailExpression());
+
+  if (currentDetail?.isCreditCard) {
+    cards.push({
+      ...currentDetail,
+      bankId: bank.id,
+      bankName: bank.name,
+    });
+  }
+
+  const originUrl = scan.url || bank.entryUrl;
+  if (!/\/mybank\/?(?:[?#].*)?$/u.test(originUrl)) {
+    return dedupeCreditCards(cards);
+  }
+
+  const discovery = await evaluatePageExpression(client, buildTBankCreditCardDiscoveryExpression());
+  for (const candidate of discovery?.candidates ?? []) {
+    if (!candidate.detailUrl) {
+      continue;
+    }
+
+    await client.send('Page.navigate', { url: candidate.detailUrl });
+    await wait(options.waitAfterOpenMs);
+    await stabilizePage(client, candidate.detailUrl, options.waitAfterOpenMs);
+
+    const detail = await evaluatePageExpression(client, buildTBankCreditCardDetailExpression());
+    if (detail?.isCreditCard) {
+      cards.push({
+        ...detail,
+        bankId: bank.id,
+        bankName: bank.name,
+        dashboardAmountText: candidate.amountText ?? null,
+        dashboardLabel: candidate.label ?? null,
+        dashboardAccountMask: candidate.accountMask ?? null,
+      });
+    }
+
+    await restorePage(client, originUrl, options.waitAfterOpenMs, {
+      preferHistoryBack: true,
+    });
+  }
+
+  return dedupeCreditCards(cards);
+}
+
 async function collectCreditCards(client, bank, scan, options) {
   switch (bank.id) {
     case 'alpha':
       return collectAlphaCreditCards(client, bank, scan, options);
     case 'vtb':
       return collectVtbCreditCards(client, bank, scan, options);
+    case 'tbank':
+      return collectTbankCreditCards(client, bank, scan, options);
     default:
       return [];
   }
@@ -2241,12 +2636,17 @@ async function scanBank(bank, options) {
       options.waitAfterOpenMs,
     );
 
-    const scan = await evaluatePageExpression(client, buildExtractionExpression(bank));
+    let scan = await evaluatePageExpression(client, buildExtractionExpression(bank));
     let creditCards = [];
     let creditCardsError = null;
 
     try {
       creditCards = await collectCreditCards(client, bank, scan, options);
+      if (bank.id === 'tbank' && shouldRetryTbankDashboardScan(scan, creditCards)) {
+        await wait(Math.max(options.waitAfterOpenMs * 2, 8000));
+        scan = await evaluatePageExpression(client, buildExtractionExpression(bank));
+        creditCards = await collectCreditCards(client, bank, scan, options);
+      }
     } catch (error) {
       creditCardsError = error.message;
     } finally {
