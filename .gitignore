@@ -1,5 +1,6 @@
 node_modules/
 out/
+worktrees/
 .DS_Store
 *.log
 npm-debug.log*
@@ -8,7 +9,6 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Local AI / agent instructions and tool configs
-AGENTS.md
 CLAUDE.md
 GEMINI.md
 COPILOT.md

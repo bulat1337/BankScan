@@ -1,7 +1,7 @@
 {
   "name": "bankscan",
   "version": "0.1.0",
-  "description": "Local bridge for extracting Alfa-Bank and VTB balances from authenticated web sessions via Chrome DevTools Protocol.",
+  "description": "Local bridge for extracting Alfa-Bank, VTB, and T-Bank balances from authenticated web sessions via Chrome DevTools Protocol.",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
@@ -10,6 +10,7 @@
   },
   "keywords": [
     "alfabank",
+    "tbank",
     "vtb",
     "banking",
     "chrome-devtools-protocol",
@@ -21,7 +22,9 @@
     "scan:reload": "node scripts/bank-balance-bridge.mjs scan all --reload",
     "sync": "node scripts/bank-balance-bridge.mjs sync all",
     "sync:alpha": "node scripts/bank-balance-bridge.mjs sync alpha",
+    "sync:tbank": "node scripts/bank-balance-bridge.mjs sync tbank",
     "sync:vtb": "node scripts/bank-balance-bridge.mjs sync vtb",
-    "help": "node scripts/bank-balance-bridge.mjs help"
+    "help": "node scripts/bank-balance-bridge.mjs help",
+    "worktree": "zsh scripts/banktree"
   }
 }

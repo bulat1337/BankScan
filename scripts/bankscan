@@ -10,7 +10,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 case "$1" in
-  alpha|vtb|all)
+  alpha|vtb|tbank|all)
     exec node "$BRIDGE_SCRIPT" sync "$@"
     ;;
   --*)

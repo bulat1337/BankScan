@@ -1,11 +1,11 @@
 ---
 name: bank-balance-bridge
-description: Use this skill when the user wants to read balances from Alfa-Bank or VTB web banking locally, keep authorization alive in persistent bridge Chrome profiles, or automate repeated balance scans with minimal manual action.
+description: Use this skill when the user wants to read balances from Alfa-Bank, VTB, or T-Bank web banking locally, keep authorization alive in persistent bridge Chrome profiles, or automate repeated balance scans with minimal manual action.
 ---
 
 # Bank Balance Bridge
 
-Use this skill to read balances from already-authenticated Alfa-Bank and VTB web sessions without asking the user for passwords, one-time codes, cookies, or tokens.
+Use this skill to read balances from already-authenticated Alfa-Bank, VTB, and T-Bank web sessions without asking the user for passwords, one-time codes, cookies, or tokens.
 
 Inside this repository, the preferred entrypoints are:
 - [bankscan](../../scripts/bankscan)
@@ -14,6 +14,8 @@ Inside this repository, the preferred entrypoints are:
 The preferred runtime mode is a persistent dedicated bridge profile under `~/.codex/state/bank-balance-bridge/profiles/<bank>`. This profile is non-standard, so Chrome will expose DevTools there and the bank session can survive future runs.
 
 Do not treat `~/Library/Application Support/Google/Chrome` as the normal solution. Since Chrome 136 on March 17, 2025, Chrome ignores remote debugging when started against the standard Chrome user data dir.
+
+For repo development work, keep the primary checkout on `main` at `/Users/bulatmotygullin/Documents/BankScan`, keep feature worktrees under `/Users/bulatmotygullin/Documents/BankScan/worktrees` inside that same top-level `BankScan` folder, do not create a sibling folder such as `~/Documents/BankScan-worktrees`, do not push feature branches, and ask the user before merging a finished feature branch into `main`.
 
 ## Workflow
 
@@ -24,10 +26,11 @@ Do not treat `~/Library/Application Support/Google/Chrome` as the normal solutio
 4. Tell the user to authorize once in the opened dedicated bridge profiles. After that, use:
    - `bankscan`
    - or `bankscan alpha`
+   - or `bankscan tbank`
    - or `bankscan vtb`
 5. `bankscan` waits for manual authorization automatically when a bank returns `login_required`, then continues scanning on its own.
 6. By default `bankscan` closes the bridge Chrome windows at the end. Use `bankscan --no-close-browser` only when the user explicitly wants to keep them open.
-7. Read `banks.<bankId>.balances` from the summary JSON and answer from that data instead of asking the user to paste page contents.
+7. Read `banks.<bankId>.balances` from the summary JSON and, for credit cards, also read `banks.<bankId>.creditCards` instead of asking the user to paste page contents.
 8. Only use `bind-profile` for an advanced case where the user already has a custom non-standard Chrome `--user-data-dir`. Do not bind to the standard Chrome data dir.
 
 ## Commands
@@ -47,6 +50,8 @@ Do not treat `~/Library/Application Support/Google/Chrome` as the normal solutio
 - Binding config: `~/.codex/state/bank-balance-bridge/config.json`
 - Dedicated bridge profiles: `~/.codex/state/bank-balance-bridge/profiles/<bank>`
 
+The summary keeps generic balances in `banks.<bankId>.balances` and richer credit-card details in `banks.<bankId>.creditCards` when the bank exposes them.
+
 ## Rules
 
 - Never ask the user for passwords, SMS codes, cookies, access tokens, or full card or account numbers.
@@ -58,5 +63,9 @@ Do not treat `~/Library/Application Support/Google/Chrome` as the normal solutio
 - If `profiles` returns entries, treat them as informational only unless a custom `--user-data-dir` is explicitly provided.
 - Prefer `bankscan` or `sync all` unless the user wants only one bank.
 - If extraction quality drifts, inspect the raw per-bank scan file and patch the script instead of asking the user to manually copy HTML.
-- The script hardcodes Alfa entry at `https://web.alfabank.ru/dashboard` and VTB entry at `https://online.vtb.ru/home/all-products`. If the user is not authenticated, VTB redirects to its login flow and then back into the product area.
+- The script hardcodes Alfa entry at `https://web.alfabank.ru/dashboard`, VTB entry at `https://online.vtb.ru/home/all-products`, and T-Bank entry at `https://www.tbank.ru/mybank/`. T-Bank card and account extraction targets the main internet-bank screen after login; if the user is not authenticated, the bank redirects into its login flow and then back to `/mybank/`.
 - If Chrome is not found automatically, rerun with `--browser /absolute/path/to/browser`.
+- For repo changes, use one local feature branch per task and one separate worktree per feature branch under `/Users/bulatmotygullin/Documents/BankScan/worktrees`.
+- Keep `~/Documents/MyScripts/bankscan` and `~/.codex/skills/bank-balance-bridge` pointed at the stable `main` checkout unless the user explicitly wants temporary testing against a feature worktree.
+- Do not push feature branches to GitHub.
+- Ask the user before merging a completed feature branch into `main`.

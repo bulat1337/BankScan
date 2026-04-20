@@ -1,7 +1,7 @@
 interface:
   display_name: "Bank Balance Bridge"
-  short_description: "Use bankscan to wait for login, scan balances, and close bridge Chrome"
-  default_prompt: "Use $bank-balance-bridge with bankscan or the bundled CLI to open the persistent bridge profiles for Alfa and VTB, wait for login when needed, scan balances, and close bridge Chrome at the end."
+  short_description: "Use bankscan to wait for login, scan balances and credit-card details for Alfa, VTB, and T-Bank, and close bridge Chrome"
+  default_prompt: "Use $bank-balance-bridge with bankscan or the bundled CLI to open the persistent bridge profiles for Alfa, VTB, and T-Bank, wait for login when needed, scan balances and credit-card details, and close bridge Chrome at the end. For repo changes, keep one local feature branch per worktree under /Users/bulatmotygullin/Documents/BankScan/worktrees inside the same top-level BankScan folder, do not create a sibling folder like ~/Documents/BankScan-worktrees, do not push feature branches, and ask before merging into main."
 
 policy:
   allow_implicit_invocation: true

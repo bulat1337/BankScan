@@ -127,6 +127,7 @@ const COMMON_LOGIN_KEYWORDS = [
   'смс-код',
   'код из смс',
   'введите код',
+  'кодовое слово',
   'пароль',
   'номер телефона',
   'секретный код',
@@ -166,6 +167,54 @@ const BANKS = {
     sectionKeywords: ['мои продукты', 'счета и карты', 'счета', 'карты', 'сбережения'],
     noiseKeywords: ['ипотек', 'кредит наличными'],
   },
+  tbank: {
+    id: 'tbank',
+    name: 'Т-Банк',
+    entryUrl: 'https://www.tbank.ru/mybank/',
+    urlFragments: ['www.tbank.ru/mybank/', 'www.tbank.ru/mybank'],
+    relevantHosts: ['www.tbank.ru', 'id.tbank.ru'],
+    titleFragments: ['Т-Банк', 'Т‑Банк', 'T-Bank', 'T‑Bank', 'Тинькофф'],
+    reloadMode: 'native',
+    remoteDebuggingPort: 9224,
+    profileDirName: 'tbank',
+    scanFileName: 'tbank-balance-scan.json',
+    productKeywords: [
+      'т-банк',
+      'т‑банк',
+      'т банк',
+      't-bank',
+      't‑bank',
+      'tbank',
+      'black',
+      'platinum',
+      'junior',
+      'all airlines',
+      'drive',
+      'накопительн',
+      'счет карты',
+      'счёт карты',
+      'счет кредита',
+      'счёт кредита',
+    ],
+    accountKeywords: [
+      'black',
+      'platinum',
+      'junior',
+      'all airlines',
+      'drive',
+      'накопительн',
+      'дебетов',
+      'кредитн',
+      'счет карты',
+      'счёт карты',
+      'счет кредита',
+      'счёт кредита',
+      'автокредит',
+      'вклад',
+    ],
+    sectionKeywords: ['главная', 'карты', 'счета', 'счёта', 'скрытые счета', 'детали счета', 'детали счёта'],
+    noiseKeywords: ['инвест', 'инвесткопилк', 'пульс', 'сим-карт', 'страхов', 'подписк'],
+  },
 };
 
 function printHelp() {
@@ -186,6 +235,7 @@ Commands:
 Banks:
   alpha
   vtb
+  tbank
   all                    Default when omitted
 
 Options:
@@ -213,6 +263,7 @@ Examples:
   node bank-balance-bridge.mjs open all
   node bank-balance-bridge.mjs scan all --reload
   node bank-balance-bridge.mjs sync all
+  node bank-balance-bridge.mjs sync tbank
   node bank-balance-bridge.mjs bind-profile alpha Default --user-data-dir /absolute/path/to/custom/User\\ Data
 `);
 }
@@ -600,7 +651,9 @@ function scoreTarget(target, bank) {
 }
 
 function isAuthLikeUrl(url) {
-  return /(?:\/logout(?:[/?#]|$)|\/login(?:[/?#]|$)|\/signin(?:[/?#]|$)|auth|passport)/i.test(url ?? '');
+  return /(?:\/logout(?:[/?#]|$)|\/login(?:[/?#]|$)|\/signin(?:[/?#]|$)|\/security-word(?:[/?#]|$)|auth|passport)/i.test(
+    url ?? '',
+  );
 }
 
 function isAuthLikeTitle(title) {
@@ -793,6 +846,7 @@ class CdpClient {
 
 function buildExtractionExpression(bank) {
   const config = {
+    bankId: bank.id,
     productKeywords: [...COMMON_PRODUCT_KEYWORDS, ...bank.productKeywords],
     accountKeywords: [...COMMON_ACCOUNT_KEYWORDS, ...(bank.accountKeywords ?? [])],
     sectionKeywords: [...COMMON_SECTION_KEYWORDS, ...bank.sectionKeywords],
@@ -808,6 +862,10 @@ function buildExtractionExpression(bank) {
 
     const normalize = (value) => value.replace(/\\s+/g, ' ').trim();
     const unique = (values) => Array.from(new Set(values));
+    const splitLines = (value) => String(value || '')
+      .split(/\\n+/)
+      .map((part) => normalize(part))
+      .filter(Boolean);
 
     const isVisible = (element) => {
       const style = window.getComputedStyle(element);
@@ -1071,6 +1129,118 @@ function buildExtractionExpression(bank) {
         noise: noiseHits,
       };
     };
+
+    const extractTBankBalances = () => {
+      if (config.bankId !== 'tbank') {
+        return null;
+      }
+
+      const list = document.querySelector('ul.bbSMs5cGO.abSMs5cGO');
+      if (!(list instanceof HTMLElement)) {
+        return null;
+      }
+
+      const parsed = Array.from(list.children)
+        .filter((element) => element instanceof HTMLElement && isVisible(element))
+        .map((element) => {
+          const text = normalize(element.innerText || '');
+          if (!text) {
+            return null;
+          }
+
+          const lines = splitLines(element.innerText || '');
+          const amountIndex = lines.findIndex((line) => extractAmounts(line).length > 0);
+          if (amountIndex < 0) {
+            return null;
+          }
+
+          const amountText = extractAmounts(lines[amountIndex])[0];
+          const labelIndex = lines.findIndex(
+            (line, index) =>
+              index > amountIndex &&
+              /[A-Za-zА-Яа-яЁё]/u.test(line) &&
+              !/^(?:Пополните из другого банка|Новый счет или продукт|Новый счёт или продукт)$/iu.test(line),
+          );
+
+          if (labelIndex < 0) {
+            return null;
+          }
+
+          const label = cleanLabel(lines[labelIndex]);
+          if (!label) {
+            return null;
+          }
+
+          const lower = text.toLowerCase();
+          const labelLower = label.toLowerCase();
+          const keywordHits = config.productKeywords.filter((keyword) => lower.includes(keyword));
+          const accountKeywordHits = config.accountKeywords.filter((keyword) => labelLower.includes(keyword));
+          const noiseHits = config.noiseKeywords.filter((keyword) => labelLower.includes(keyword));
+          const maskCandidates = lines.slice(labelIndex + 1).filter((line) => /^\\d{4}$/u.test(line));
+          const accountMask = maskCandidates.at(-1) ?? null;
+          const selector = buildSelector(element);
+          const score = 95 + Math.min(keywordHits.length, 3) * 4 + (accountMask ? 8 : 0) - noiseHits.length * 10;
+
+          return {
+            visualTop: Math.round(element.getBoundingClientRect().top),
+            balance: {
+              kind: 'product',
+              label,
+              accountMask,
+              amountText,
+              amountValue: parseAmountValue(amountText),
+              currency: parseCurrency(amountText),
+              score,
+              isDerived: false,
+              selector,
+              text,
+              keywords: keywordHits,
+              accountKeywords: accountKeywordHits,
+              sectionHits: ['все продукты'],
+              noise: noiseHits,
+            },
+          };
+        })
+        .filter(Boolean)
+        .filter((item) => item.balance.amountValue !== null && item.balance.noise.length === 0)
+        .sort((left, right) => left.visualTop - right.visualTop);
+
+      if (parsed.length === 0) {
+        return null;
+      }
+
+      return {
+        balances: parsed.map((item) => item.balance),
+        candidates: parsed.map((item) => ({
+          score: item.balance.score,
+          selector: item.balance.selector,
+          text: item.balance.text,
+          amounts: [item.balance.amountText],
+          keywords: item.balance.keywords,
+          sectionHits: item.balance.sectionHits,
+          noise: item.balance.noise,
+          containerText: item.balance.text,
+        })),
+      };
+    };
+
+    const tbankExtraction = extractTBankBalances();
+    if (tbankExtraction && tbankExtraction.balances.length > 0) {
+      const bodyText = normalize(document.body?.innerText || '').slice(0, 5000);
+      const loginSignals = config.loginKeywords.filter((keyword) => bodyText.toLowerCase().includes(keyword));
+
+      return {
+        title: document.title,
+        url: location.href,
+        candidateCount: tbankExtraction.candidates.length,
+        balanceCount: tbankExtraction.balances.length,
+        balances: tbankExtraction.balances,
+        loginSignals,
+        loginLikely: tbankExtraction.balances.length === 0 && loginSignals.length > 0,
+        bodyPreview: bodyText.slice(0, 400),
+        topCandidates: tbankExtraction.candidates.slice(0, 30),
+      };
+    }
 
     const seenCandidates = new Set();
     const candidates = [];

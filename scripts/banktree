@@ -1,0 +1,123 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR="${0:P:h}"
+REPO_ROOT="${SCRIPT_DIR:h}"
+WORKTREE_HOME="${BANKSCAN_WORKTREE_HOME:-$REPO_ROOT/worktrees}"
+MAIN_BRANCH="${BANKSCAN_MAIN_BRANCH:-main}"
+
+usage() {
+  cat <<EOF
+Usage:
+  banktree help
+  banktree root
+  banktree list
+  banktree path <branch>
+  banktree add <branch> [start-point]
+  banktree remove <branch|path>
+  banktree prune
+
+Defaults:
+  worktree root: $WORKTREE_HOME
+  base branch:   $MAIN_BRANCH
+
+Notes:
+  - Keep the primary checkout on '$MAIN_BRANCH' at $REPO_ROOT
+  - Keep one feature per local branch and per worktree
+  - Do not push feature branches to GitHub
+  - Ask the user before merging a finished feature branch into '$MAIN_BRANCH'
+EOF
+}
+
+fail() {
+  print -u2 -- "$1"
+  exit 1
+}
+
+worktree_path_for_branch() {
+  local branch="$1"
+  local slug="${branch//\//--}"
+  slug="${slug// /-}"
+  slug="${slug//:/-}"
+  slug="${slug//[^A-Za-z0-9._-]/-}"
+  print -r -- "$WORKTREE_HOME/$slug"
+}
+
+ensure_main_branch_exists() {
+  git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$MAIN_BRANCH" \
+    || fail "Base branch '$MAIN_BRANCH' does not exist in $REPO_ROOT"
+}
+
+ensure_not_main_branch() {
+  local branch="$1"
+  [[ "$branch" != "$MAIN_BRANCH" ]] \
+    || fail "Keep '$MAIN_BRANCH' in the primary checkout at $REPO_ROOT"
+}
+
+mkdir -p "$WORKTREE_HOME"
+
+command_name="${1:-help}"
+
+case "$command_name" in
+  help|-h|--help)
+    usage
+    ;;
+  root)
+    print -r -- "$WORKTREE_HOME"
+    ;;
+  list)
+    git -C "$REPO_ROOT" worktree list
+    ;;
+  path)
+    [[ $# -ge 2 ]] || fail "Usage: banktree path <branch>"
+    worktree_path_for_branch "$2"
+    ;;
+  add)
+    [[ $# -ge 2 ]] || fail "Usage: banktree add <branch> [start-point]"
+    branch="$2"
+    start_point="${3:-$MAIN_BRANCH}"
+    ensure_not_main_branch "$branch"
+    ensure_main_branch_exists
+    worktree_path="$(worktree_path_for_branch "$branch")"
+
+    [[ ! -e "$worktree_path" ]] \
+      || fail "Target path already exists: $worktree_path"
+
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$branch"; then
+      git -C "$REPO_ROOT" worktree add "$worktree_path" "$branch"
+    else
+      git -C "$REPO_ROOT" worktree add -b "$branch" "$worktree_path" "$start_point"
+    fi
+
+    print -r -- "Created worktree:"
+    print -r -- "  branch: $branch"
+    print -r -- "  path:   $worktree_path"
+    print -r -- "Feature branches stay local. Ask the user before merging into '$MAIN_BRANCH'."
+    ;;
+  remove)
+    [[ $# -ge 2 ]] || fail "Usage: banktree remove <branch|path>"
+    target="$2"
+
+    if [[ "$target" == "$MAIN_BRANCH" ]]; then
+      fail "Refusing to remove the primary '$MAIN_BRANCH' checkout"
+    fi
+
+    if [[ -d "$target" ]]; then
+      worktree_path="$target"
+    else
+      worktree_path="$(worktree_path_for_branch "$target")"
+    fi
+
+    [[ "$worktree_path" != "$REPO_ROOT" ]] \
+      || fail "Refusing to remove the primary checkout at $REPO_ROOT"
+
+    git -C "$REPO_ROOT" worktree remove "$worktree_path"
+    ;;
+  prune)
+    git -C "$REPO_ROOT" worktree prune
+    ;;
+  *)
+    fail "Unknown command: $command_name"
+    ;;
+esac
