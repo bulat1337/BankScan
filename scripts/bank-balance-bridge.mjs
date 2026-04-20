@@ -1213,9 +1213,467 @@ function buildExtractionExpression(bank) {
   })()`;
 }
 
+function buildAlphaCreditCardDiscoveryExpression() {
+  return `(() => {
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const amountPattern = /[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?\\s?(?:₽|руб\\.?|RUB|USD|EUR|€|\\$)/giu;
+    const candidates = [];
+    const seen = new Set();
+
+    for (const node of Array.from(document.querySelectorAll('button,[role="button"],a'))) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        continue;
+      }
+
+      const text = normalize(node.innerText || node.textContent || '');
+      if (!text || !/кредитн/i.test(text)) {
+        continue;
+      }
+
+      const testId = node.getAttribute('data-test-id');
+      const accountIdMatch =
+        testId?.match(/product-view-content-(\\d+)/u) ??
+        node.href?.match(/\\/accounts\\/(\\d+)/u);
+      const accountId = accountIdMatch?.[1] ?? null;
+      const detailUrl = accountId ? 'https://web.alfabank.ru/accounts/' + accountId : node.href || null;
+
+      if (!detailUrl) {
+        continue;
+      }
+
+      const amountText = normalize(text.match(amountPattern)?.[0] || '');
+      const label = normalize(text.replace(amountPattern, '').replace(/(?:··|••|\\*{2,}|•{2,})\\s?\\d{2,4}/gu, ''));
+      const accountMask =
+        text.match(/(?:··|••|\\*{2,}|•{2,})\\s?(\\d{2,4})/u)?.[1] ??
+        normalize(text).match(/\\b(\\d{4})\\b/u)?.[1] ??
+        null;
+      const key = [detailUrl, testId || '', label].join('|');
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      candidates.push({
+        label: label || 'Кредитная карта',
+        text,
+        amountText: amountText || null,
+        accountId,
+        accountMask,
+        detailUrl,
+        testId: testId || null,
+      });
+    }
+
+    return {
+      url: location.href,
+      candidates,
+    };
+  })()`;
+}
+
+function buildAlphaCreditCardDetailExpression() {
+  return `(() => {
+    const MONTH_PATTERN = '(?:январ[ья]|феврал[ья]|марта|апрел[ья]|мая|июн[ья]|июл[ья]|августа|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])';
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const unique = (values) => Array.from(new Set(values.filter(Boolean)));
+    const amountPattern = /[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?\\s?(?:₽|руб\\.?|RUB|USD|EUR|€|\\$)/giu;
+
+    const getText = (testId) =>
+      normalize(document.querySelector('[data-test-id="' + CSS.escape(testId) + '"]')?.innerText || '');
+    const getTexts = (testId) =>
+      unique(
+        Array.from(document.querySelectorAll('[data-test-id="' + CSS.escape(testId) + '"]'))
+          .map((node) => normalize(node.innerText || ''))
+          .filter(Boolean),
+      );
+    const firstAmount = (text) => normalize(text.match(amountPattern)?.[0] || '');
+    const parseAmountValue = (amountText) => {
+      const numeric = amountText.match(/[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?/u);
+      if (!numeric) {
+        return null;
+      }
+
+      return Number.parseFloat(numeric[0].replace(/[\\s\\u00A0]/g, '').replace(',', '.'));
+    };
+    const parseCurrency = (amountText) => {
+      if (amountText.includes('₽') || /руб/i.test(amountText)) {
+        return 'RUB';
+      }
+      if (amountText.includes('$') || /USD/i.test(amountText)) {
+        return 'USD';
+      }
+      if (amountText.includes('€') || /EUR/i.test(amountText)) {
+        return 'EUR';
+      }
+      return null;
+    };
+    const formatCurrency = (value, currency) => {
+      if (value == null || !currency) {
+        return null;
+      }
+
+      return new Intl.NumberFormat('ru-RU', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    };
+    const extractMask = (text) =>
+      text.match(/(?:··|••|\\*{2,}|•{2,})\\s?(\\d{2,4})/u)?.[1] ??
+      text.match(/\\b(\\d{4})\\b/u)?.[1] ??
+      null;
+    const extractDate = (text) =>
+      normalize(
+        text.match(new RegExp('(?:^|[^\\\\d])(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')(?=$|[^а-яё])', 'iu'))?.[1] || '',
+      );
+    const extractDays = (text) => {
+      const match = text.match(/(\\d+)\\s+дн(?:ей|я|ь)?/iu);
+      return match ? Number.parseInt(match[1], 10) : null;
+    };
+    const findExplicitLimitText = () => {
+      const bodyText = normalize(document.body?.innerText || '');
+      const match = bodyText.match(
+        new RegExp(
+          '(?:кредитный лимит|лимит по карте)[^\\\\d+-]{0,30}([+-]?(?:\\\\d{1,3}(?:[\\\\s\\\\u00A0]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{2})?\\\\s?(?:₽|руб\\\\.?|RUB|USD|EUR|€|\\\\$))',
+          'iu',
+        ),
+      );
+      return normalize(match?.[1] || '');
+    };
+    const findCashAdvanceInfo = () => {
+      const contentText = getText('content');
+      if (!contentText) {
+        return null;
+      }
+
+      const match = contentText.match(
+        new RegExp(
+          '(Сняли[^.]+?[+-]?(?:\\\\d{1,3}(?:[\\\\s\\\\u00A0]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{2})?\\\\s?(?:₽|руб\\\\.?|RUB|USD|EUR|€|\\\\$)[^.]*?до\\\\s+\\\\d{1,2}\\\\s+' +
+            MONTH_PATTERN +
+            ')',
+          'iu',
+        ),
+      );
+      return normalize(match?.[1] || '');
+    };
+
+    const label = getText('account-name') || normalize(document.querySelector('h1')?.innerText || '');
+    const accountNumberText = getText('account-number');
+    const availableAmountText = firstAmount(getText('account-balance') || getText('balance-component-balance'));
+    const debtStatusText = getText('account-credit-debt-status');
+    const debtAmountText = firstAmount(getText('total-debt-widget-title') || getText('total-debt-widget') || debtStatusText);
+    const paymentStatusText = getText('total-debt-widget-description');
+    const gracePeriodText = getText('interest-free-period-widget-title');
+    const gracePeriodDescription = getText('interest-free-period-widget-description');
+    const cardPreviewNumbers = getTexts('card-preview-number');
+    const cardSummaryText = getText('cards-list') || getText('card-list-root');
+    const currency = parseCurrency(availableAmountText || debtAmountText || debtStatusText);
+    const availableAmountValue = parseAmountValue(availableAmountText);
+    const debtAmountValue = parseAmountValue(debtAmountText);
+    const explicitLimitText = findExplicitLimitText();
+    let creditLimitText = explicitLimitText || null;
+    let creditLimitValue = parseAmountValue(explicitLimitText);
+    let creditLimitSource = explicitLimitText ? 'page_text' : null;
+
+    if (
+      creditLimitValue == null &&
+      availableAmountValue != null &&
+      debtAmountValue != null &&
+      currency
+    ) {
+      creditLimitValue = availableAmountValue + debtAmountValue;
+      creditLimitText = formatCurrency(creditLimitValue, currency);
+      creditLimitSource = 'derived_available_plus_total_debt';
+    }
+
+    const detailUrl = location.href;
+    const accountId = detailUrl.match(/\\/accounts\\/(\\d+)/u)?.[1] ?? null;
+    const linkedCardMasks = unique(cardPreviewNumbers.map((text) => extractMask(text)));
+    const isCreditCard = /кредитн/i.test(
+      [label, accountNumberText, debtStatusText, getText('credit-info-about-debt')].join(' '),
+    );
+
+    return {
+      isCreditCard,
+      productType: 'credit_card',
+      label: label || 'Кредитная карта',
+      detailUrl,
+      accountId,
+      accountMask: extractMask(accountNumberText),
+      accountNumberText: accountNumberText || null,
+      linkedCardMasks,
+      linkedCardsText: cardSummaryText || null,
+      availableAmountText: availableAmountText || null,
+      availableAmountValue,
+      debtAmountText: debtAmountText || null,
+      debtAmountValue,
+      debtStatusText: debtStatusText || null,
+      creditLimitText,
+      creditLimitValue,
+      creditLimitSource,
+      paymentStatusText: paymentStatusText || null,
+      paymentDueDateText: extractDate(paymentStatusText),
+      paymentAmountText: firstAmount(paymentStatusText) || null,
+      gracePeriodText: gracePeriodText || null,
+      gracePeriodDays: extractDays(gracePeriodText),
+      gracePeriodUntilText: extractDate(gracePeriodText),
+      gracePeriodDescription: gracePeriodDescription || null,
+      cashAdvanceInfoText: findCashAdvanceInfo(),
+      cardBenefitText: cardSummaryText || null,
+      title: document.title,
+      url: location.href,
+    };
+  })()`;
+}
+
+function buildVtbCreditCardDiscoveryExpression() {
+  return `(() => {
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const amountPattern = /[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?\\s?(?:₽|руб\\.?|RUB|USD|EUR|€|\\$)/giu;
+    const collected = [];
+    const seen = new Set();
+
+    const visit = (root) => {
+      if (!root) {
+        return;
+      }
+
+      if (root instanceof HTMLElement && !seen.has(root)) {
+        seen.add(root);
+        collected.push(root);
+      }
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let current = walker.currentNode;
+
+      if (current instanceof HTMLElement && !seen.has(current)) {
+        seen.add(current);
+        collected.push(current);
+      }
+
+      while (walker.nextNode()) {
+        current = walker.currentNode;
+        if (current instanceof HTMLElement && !seen.has(current)) {
+          seen.add(current);
+          collected.push(current);
+        }
+
+        if (current.shadowRoot) {
+          visit(current.shadowRoot);
+        }
+      }
+    };
+
+    visit(document.body);
+
+    const candidates = [];
+    const candidateKeys = new Set();
+
+    for (const node of collected) {
+      if (!(node instanceof HTMLElement)) {
+        continue;
+      }
+
+      const isInteractive = node.tagName === 'BUTTON' || node.tagName === 'A' || node.getAttribute('role') === 'button';
+      if (!isInteractive) {
+        continue;
+      }
+
+      const rect = node.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        continue;
+      }
+
+      const text = normalize(node.innerText || node.textContent || '');
+      const testId = node.getAttribute('data-testid') || node.getAttribute('data-test-id') || null;
+      const lowerText = text.toLowerCase();
+      const lowerTestId = (testId || '').toLowerCase();
+      const creditLike =
+        (/кредитн/i.test(lowerText) && /(карт|счет|счёт)/i.test(lowerText)) ||
+        /credit/.test(lowerTestId);
+
+      if (!creditLike) {
+        continue;
+      }
+
+      if (/^кредиты$/iu.test(text) || /^открыть/i.test(text)) {
+        continue;
+      }
+
+      const amountText = normalize(text.match(amountPattern)?.[0] || '');
+      const key = [testId || '', text].join('|');
+      if (candidateKeys.has(key)) {
+        continue;
+      }
+
+      candidateKeys.add(key);
+      candidates.push({
+        text,
+        amountText: amountText || null,
+        testId,
+      });
+    }
+
+    return {
+      url: location.href,
+      candidates,
+    };
+  })()`;
+}
+
+function buildVtbCreditCardDetailExpression() {
+  return `(() => {
+    const MONTH_PATTERN = '(?:январ[ья]|феврал[ья]|марта|апрел[ья]|мая|июн[ья]|июл[ья]|августа|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])';
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const amountSource = '[+-]?(?:\\\\d{1,3}(?:[\\\\s\\\\u00A0]\\\\d{3})+|\\\\d+)(?:[.,]\\\\d{2})?';
+    const amountWithCurrencySource = amountSource + '\\\\s?(?:₽|руб\\\\.?|RUB|USD|EUR|€|\\\\$)';
+    const amountPattern = new RegExp(amountWithCurrencySource, 'iu');
+    const bodyText = normalize(document.body?.innerText || '');
+    const lowerBody = bodyText.toLowerCase();
+    const url = location.href;
+    const headings = Array.from(document.querySelectorAll('h1,h2,h3'))
+      .map((node) => normalize(node.innerText || ''))
+      .filter(Boolean);
+    const label =
+      headings.find((text) => !/^назад$/iu.test(text)) ||
+      normalize(bodyText.match(/Назад\\s+([^\\d][^₽]{1,90})/u)?.[1] || '') ||
+      null;
+    const titleText = [document.title, label].filter(Boolean).join(' ');
+    const creditSignals = [];
+
+    if (/\\/details\\/[^/]*Credit/i.test(url)) {
+      creditSignals.push('credit_route');
+    }
+    if (/кредитн(?:ая|ой|ый)?\\s+карт/i.test(bodyText) || /кредитн/i.test(titleText)) {
+      creditSignals.push('credit_card_text');
+    }
+    if (/кредитный лимит/i.test(lowerBody)) {
+      creditSignals.push('credit_limit_text');
+    }
+    if (/льготн|без процентов|беспроцент/i.test(lowerBody) && /карт/i.test(lowerBody)) {
+      creditSignals.push('grace_period_text');
+    }
+    if (/задолженность|общий долг|минимальн(?:ый|ого)?\\s+плат(?:е|ё)ж|к оплате/i.test(lowerBody) && /кредит/i.test(lowerBody)) {
+      creditSignals.push('debt_or_payment_text');
+    }
+
+    const isCreditCard =
+      creditSignals.length > 0 &&
+      (creditSignals.includes('credit_route') ||
+        /кредит/i.test([url, titleText, bodyText].join(' ')));
+
+    if (!isCreditCard) {
+      return {
+        isCreditCard: false,
+        url,
+        title: document.title,
+        creditSignals,
+      };
+    }
+
+    const extractAmountValue = (amountText) => {
+      const numeric = amountText.match(/[+-]?(?:\\d{1,3}(?:[\\s\\u00A0]\\d{3})+|\\d+)(?:[.,]\\d{2})?/u);
+      if (!numeric) {
+        return null;
+      }
+
+      return Number.parseFloat(numeric[0].replace(/[\\s\\u00A0]/g, '').replace(',', '.'));
+    };
+    const extractCurrency = (amountText) => {
+      if (amountText.includes('₽') || /руб/i.test(amountText)) {
+        return 'RUB';
+      }
+      if (amountText.includes('$') || /USD/i.test(amountText)) {
+        return 'USD';
+      }
+      if (amountText.includes('€') || /EUR/i.test(amountText)) {
+        return 'EUR';
+      }
+      return null;
+    };
+    const extractDate = (text) =>
+      normalize(
+        text.match(new RegExp('(?:^|[^\\\\d])(\\\\d{1,2}\\\\s+' + MONTH_PATTERN + ')(?=$|[^а-яё])', 'iu'))?.[1] || '',
+      );
+    const extractMask = (text) =>
+      text.match(/(?:•|\\*{2,})\\s?(\\d{4})/u)?.[1] ??
+      text.match(/последними цифрами\\s+(\\d{2})\\s+(\\d{2})/iu)?.slice(1).join('') ??
+      text.match(/\\b(\\d{4})\\b/u)?.[1] ??
+      null;
+    const extractLabeledAmount = (labelPattern) => {
+      const regex = new RegExp('(?:' + labelPattern + ')[^\\\\d+-]{0,40}(' + amountWithCurrencySource + ')', 'iu');
+      return normalize(bodyText.match(regex)?.[1] || '');
+    };
+    const extractSentence = (labelPattern) => {
+      const regex = new RegExp('((?:' + labelPattern + ')[^.]{0,160})', 'iu');
+      return normalize(bodyText.match(regex)?.[1] || '');
+    };
+
+    const availableAmountText =
+      extractLabeledAmount('доступно|доступный остаток|можно потратить') || null;
+    const debtAmountText =
+      extractLabeledAmount('задолженность|общий долг|долг|к оплате|к погашению') || null;
+    const creditLimitText =
+      extractLabeledAmount('кредитный лимит|лимит') || null;
+    const paymentStatusText =
+      extractSentence('минимальн(?:ый|ого)?\\\\s+плат(?:е|ё)ж|плат(?:е|ё)ж[^.]{0,20}до|к оплате') || null;
+    const paymentAmountText =
+      extractLabeledAmount('минимальн(?:ый|ого)?\\\\s+плат(?:е|ё)ж|плат(?:е|ё)ж') || null;
+    const gracePeriodText =
+      extractSentence('льготн(?:ый|ого)?\\\\s+период|без процентов|беспроцентный период') || null;
+    const headerText = [label, bodyText.slice(0, 320)].filter(Boolean).join(' ');
+
+    return {
+      isCreditCard: true,
+      productType: 'credit_card',
+      label: label || 'Кредитная карта',
+      detailUrl: url,
+      routeType: url.match(/\\/details\\/([^/]+)/u)?.[1] ?? null,
+      productId: url.match(/\\/details\\/[^/]+\\/([^/?#]+)/u)?.[1] ?? null,
+      cardMask: extractMask(headerText),
+      availableAmountText,
+      availableAmountValue: extractAmountValue(availableAmountText || ''),
+      debtAmountText,
+      debtAmountValue: extractAmountValue(debtAmountText || ''),
+      creditLimitText,
+      creditLimitValue: extractAmountValue(creditLimitText || ''),
+      creditLimitSource: creditLimitText ? 'page_text' : null,
+      paymentStatusText,
+      paymentDueDateText: extractDate(paymentStatusText || ''),
+      paymentAmountText,
+      gracePeriodText,
+      gracePeriodUntilText: extractDate(gracePeriodText || ''),
+      currency: extractCurrency(
+        availableAmountText || debtAmountText || creditLimitText || paymentAmountText || '',
+      ),
+      creditSignals,
+      title: document.title,
+      url,
+      rawSummaryText: bodyText.slice(0, 1200),
+    };
+  })()`;
+}
+
 async function writeJson(filePath, value) {
   await ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function evaluatePageExpression(client, expression, awaitPromise = false) {
+  const evaluation = await client.send('Runtime.evaluate', {
+    expression,
+    returnByValue: true,
+    awaitPromise,
+  });
+
+  return evaluation.result.value;
 }
 
 async function getPageSnapshot(client) {
@@ -1231,6 +1689,269 @@ async function getPageSnapshot(client) {
   });
 
   return evaluation.result.value;
+}
+
+async function restorePage(client, originUrl, waitMs, options = {}) {
+  const { preferHistoryBack = false } = options;
+  let snapshot = await getPageSnapshot(client);
+
+  if (!originUrl || snapshot.url === originUrl) {
+    return snapshot;
+  }
+
+  if (preferHistoryBack) {
+    await evaluatePageExpression(client, '(() => { history.back(); return true; })()');
+    await wait(waitMs);
+    snapshot = await stabilizePage(client, null, waitMs);
+    if (snapshot.url === originUrl) {
+      return snapshot;
+    }
+  }
+
+  await client.send('Page.navigate', { url: originUrl });
+  await wait(waitMs);
+  return stabilizePage(client, originUrl, waitMs);
+}
+
+function dedupeCreditCards(cards) {
+  const deduped = new Map();
+
+  for (const card of cards) {
+    const key = [
+      card.bankId ?? '',
+      card.detailUrl ?? '',
+      card.accountId ?? '',
+      card.productId ?? '',
+      card.accountMask ?? '',
+      card.cardMask ?? '',
+      card.label ?? '',
+    ].join('|');
+
+    if (!deduped.has(key)) {
+      deduped.set(key, card);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function buildAlphaCreditCardOpenExpression(candidate) {
+  const descriptor = {
+    testId: candidate.testId ?? null,
+    text: candidate.text ?? null,
+  };
+
+  return `(() => {
+    const descriptor = ${JSON.stringify(descriptor)};
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const nodes = Array.from(document.querySelectorAll('button,[role="button"],a'));
+    const target =
+      (descriptor.testId
+        ? nodes.find((node) => node.getAttribute('data-test-id') === descriptor.testId)
+        : null) ||
+      (descriptor.text
+        ? nodes.find((node) => normalize(node.innerText || node.textContent || '') === descriptor.text)
+        : null);
+
+    if (!target) {
+      return {
+        clicked: false,
+      };
+    }
+
+    target.click();
+    return {
+      clicked: true,
+      text: normalize(target.innerText || target.textContent || ''),
+    };
+  })()`;
+}
+
+function buildVtbCreditCardOpenExpression(candidate) {
+  const descriptor = {
+    testId: candidate.testId ?? null,
+    text: candidate.text ?? null,
+  };
+
+  return `(() => {
+    const descriptor = ${JSON.stringify(descriptor)};
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const collected = [];
+    const seen = new Set();
+
+    const visit = (root) => {
+      if (!root) {
+        return;
+      }
+
+      if (root instanceof HTMLElement && !seen.has(root)) {
+        seen.add(root);
+        collected.push(root);
+      }
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let current = walker.currentNode;
+
+      if (current instanceof HTMLElement && !seen.has(current)) {
+        seen.add(current);
+        collected.push(current);
+      }
+
+      while (walker.nextNode()) {
+        current = walker.currentNode;
+        if (current instanceof HTMLElement && !seen.has(current)) {
+          seen.add(current);
+          collected.push(current);
+        }
+
+        if (current.shadowRoot) {
+          visit(current.shadowRoot);
+        }
+      }
+    };
+
+    visit(document.body);
+
+    const target =
+      (descriptor.testId
+        ? collected.find(
+            (node) =>
+              node instanceof HTMLElement &&
+              (node.getAttribute('data-testid') || node.getAttribute('data-test-id')) === descriptor.testId,
+          )
+        : null) ||
+      (descriptor.text
+        ? collected.find(
+            (node) =>
+              node instanceof HTMLElement &&
+              normalize(node.innerText || node.textContent || '') === descriptor.text,
+          )
+        : null);
+
+    if (!(target instanceof HTMLElement)) {
+      return {
+        clicked: false,
+      };
+    }
+
+    target.click();
+    return {
+      clicked: true,
+      text: normalize(target.innerText || target.textContent || ''),
+    };
+  })()`;
+}
+
+async function collectAlphaCreditCards(client, bank, scan, options) {
+  const cards = [];
+  const currentDetail = await evaluatePageExpression(client, buildAlphaCreditCardDetailExpression());
+
+  if (currentDetail?.isCreditCard) {
+    return dedupeCreditCards([
+      {
+        ...currentDetail,
+        bankId: bank.id,
+        bankName: bank.name,
+      },
+    ]);
+  }
+
+  const discovery = await evaluatePageExpression(client, buildAlphaCreditCardDiscoveryExpression());
+  const originUrl = scan.url || bank.entryUrl;
+
+  for (const candidate of discovery?.candidates ?? []) {
+    const clickResult = await evaluatePageExpression(
+      client,
+      buildAlphaCreditCardOpenExpression(candidate),
+      true,
+    );
+
+    if (!clickResult?.clicked && candidate.detailUrl) {
+      await client.send('Page.navigate', { url: candidate.detailUrl });
+    }
+
+    await wait(options.waitAfterOpenMs);
+    await stabilizePage(client, candidate.detailUrl ?? null, options.waitAfterOpenMs);
+
+    const detail = await evaluatePageExpression(client, buildAlphaCreditCardDetailExpression());
+    if (detail?.isCreditCard) {
+      cards.push({
+        ...detail,
+        bankId: bank.id,
+        bankName: bank.name,
+        dashboardAmountText: candidate.amountText ?? null,
+        sourceButtonTestId: candidate.testId ?? null,
+      });
+    }
+
+    await restorePage(client, originUrl, options.waitAfterOpenMs, {
+      preferHistoryBack: true,
+    });
+  }
+
+  return dedupeCreditCards(cards);
+}
+
+async function collectVtbCreditCards(client, bank, scan, options) {
+  const cards = [];
+  const currentDetail = await evaluatePageExpression(client, buildVtbCreditCardDetailExpression());
+
+  if (currentDetail?.isCreditCard) {
+    cards.push({
+      ...currentDetail,
+      bankId: bank.id,
+      bankName: bank.name,
+    });
+  }
+
+  const originUrl = scan.url || bank.entryUrl;
+  if (!originUrl.includes('/home/all-products')) {
+    return dedupeCreditCards(cards);
+  }
+
+  const discovery = await evaluatePageExpression(client, buildVtbCreditCardDiscoveryExpression());
+  for (const candidate of discovery?.candidates ?? []) {
+    const clickResult = await evaluatePageExpression(
+      client,
+      buildVtbCreditCardOpenExpression(candidate),
+      true,
+    );
+
+    if (!clickResult?.clicked) {
+      continue;
+    }
+
+    await wait(options.waitAfterOpenMs);
+    await stabilizePage(client, null, options.waitAfterOpenMs);
+
+    const detail = await evaluatePageExpression(client, buildVtbCreditCardDetailExpression());
+    if (detail?.isCreditCard) {
+      cards.push({
+        ...detail,
+        bankId: bank.id,
+        bankName: bank.name,
+        dashboardAmountText: candidate.amountText ?? null,
+        sourceButtonTestId: candidate.testId ?? null,
+      });
+    }
+
+    await restorePage(client, originUrl, options.waitAfterOpenMs, {
+      preferHistoryBack: true,
+    });
+  }
+
+  return dedupeCreditCards(cards);
+}
+
+async function collectCreditCards(client, bank, scan, options) {
+  switch (bank.id) {
+    case 'alpha':
+      return collectAlphaCreditCards(client, bank, scan, options);
+    case 'vtb':
+      return collectVtbCreditCards(client, bank, scan, options);
+    default:
+      return [];
+  }
 }
 
 async function stabilizePage(client, targetUrl, waitMs) {
@@ -1250,8 +1971,8 @@ async function stabilizePage(client, targetUrl, waitMs) {
   return snapshot;
 }
 
-function classifyScan(bank, scan, context) {
-  if ((scan.balances?.length ?? 0) > 0) {
+function classifyScan(bank, scan, context, creditCards = []) {
+  if ((scan.balances?.length ?? 0) > 0 || (creditCards?.length ?? 0) > 0) {
     return 'ok';
   }
 
@@ -1275,8 +1996,18 @@ function classifyScan(bank, scan, context) {
 
 function summarizeStatus(bank, result) {
   switch (result.status) {
-    case 'ok':
-      return `Detected ${result.balances.length} balance entries`;
+    case 'ok': {
+      const balanceCount = result.balances?.length ?? 0;
+      const creditCardCount = result.creditCards?.length ?? 0;
+      if (creditCardCount > 0) {
+        const balancePart =
+          balanceCount > 0
+            ? `${balanceCount} balance entr${balanceCount === 1 ? 'y' : 'ies'}`
+            : 'no balance entries';
+        return `Detected ${balancePart} and ${creditCardCount} credit card detail${creditCardCount === 1 ? '' : 's'}`;
+      }
+      return `Detected ${balanceCount} balance entr${balanceCount === 1 ? 'y' : 'ies'}`;
+    }
     case 'login_required':
       return `${bank.name} requires login in the ${describeProfileMode(bank)}`;
     case 'no_balances':
@@ -1340,14 +2071,21 @@ async function scanBank(bank, options) {
       options.waitAfterOpenMs,
     );
 
-    const evaluation = await client.send('Runtime.evaluate', {
-      expression: buildExtractionExpression(bank),
-      returnByValue: true,
-      awaitPromise: false,
-    });
+    const scan = await evaluatePageExpression(client, buildExtractionExpression(bank));
+    let creditCards = [];
+    let creditCardsError = null;
 
-    const scan = evaluation.result.value;
-    const status = classifyScan(bank, scan, ensured);
+    try {
+      creditCards = await collectCreditCards(client, bank, scan, options);
+    } catch (error) {
+      creditCardsError = error.message;
+    } finally {
+      await restorePage(client, scan.url || bank.entryUrl, options.waitAfterOpenMs, {
+        preferHistoryBack: bank.id === 'vtb',
+      });
+    }
+
+    const status = classifyScan(bank, scan, ensured, creditCards);
     const result = {
       bankId: bank.id,
       bankName: bank.name,
@@ -1356,6 +2094,7 @@ async function scanBank(bank, options) {
       message: summarizeStatus(bank, {
         status,
         balances: scan.balances ?? [],
+        creditCards,
       }),
       fetchedAt: new Date().toISOString(),
       debugUrl: ensured.debugUrl,
@@ -1376,6 +2115,8 @@ async function scanBank(bank, options) {
       target: ensured.target,
       scan,
       balances: scan.balances ?? [],
+      creditCards,
+      creditCardsError,
     };
 
     await writeJson(paths.bankScanFile, result);
@@ -1437,6 +2178,7 @@ async function writeSummary(results, stateRoot) {
           outputFile: result.outputFile ?? null,
           source: result.source ?? null,
           balances: result.balances ?? [],
+          creditCards: result.creditCards ?? [],
         },
       ]),
     ),
@@ -1453,10 +2195,42 @@ function printBalances(result) {
   }
 }
 
+function printCreditCards(result) {
+  for (const card of result.creditCards ?? []) {
+    const suffix =
+      card.linkedCardMasks?.[0] ? ` ··${card.linkedCardMasks[0]}` : card.accountMask ? ` ··${card.accountMask}` : '';
+    const parts = [];
+
+    if (card.debtAmountText) {
+      parts.push(`долг ${card.debtAmountText}`);
+    }
+    if (card.availableAmountText) {
+      parts.push(`доступно ${card.availableAmountText}`);
+    }
+    if (card.creditLimitText) {
+      parts.push(`лимит ${card.creditLimitText}`);
+    }
+    if (card.paymentDueDateText) {
+      parts.push(`платёж ${card.paymentDueDateText}`);
+    }
+    if (card.gracePeriodUntilText) {
+      parts.push(`без % до ${card.gracePeriodUntilText}`);
+    }
+
+    console.log(`  - [credit_card] ${card.label}${suffix}${parts.length > 0 ? `: ${parts.join(', ')}` : ''}`);
+  }
+}
+
 function printResult(result) {
   console.log(`${result.bankId}: ${result.status} - ${result.message}`);
   if ((result.balances?.length ?? 0) > 0) {
     printBalances(result);
+  }
+  if ((result.creditCards?.length ?? 0) > 0) {
+    printCreditCards(result);
+  }
+  if (result.creditCardsError) {
+    console.log(`  - [warning] credit card extraction failed: ${result.creditCardsError}`);
   }
 }
 
@@ -1512,6 +2286,7 @@ function resultsChanged(previous, next) {
     previous.status !== next.status ||
     previous.message !== next.message ||
     (previous.balances?.length ?? 0) !== (next.balances?.length ?? 0) ||
+    (previous.creditCards?.length ?? 0) !== (next.creditCards?.length ?? 0) ||
     previous.source?.targetUrl !== next.source?.targetUrl
   );
 }
