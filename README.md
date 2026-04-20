@@ -1,31 +1,31 @@
 # BankScan
 
-Локальный репозиторий для чтения остатков из уже авторизованных веб-сессий Альфа-Банка, ВТБ и Т-Банка через Chrome DevTools Protocol, без передачи логинов, паролей, cookies или токенов во внешние сервисы.
+Local repository for reading balances from already authenticated Alfa-Bank, VTB, and T-Bank web sessions through Chrome DevTools Protocol, without sending logins, passwords, cookies, or tokens to external services.
 
-Основные entrypoints:
+Main entry points:
 - [scripts/bank-balance-bridge.mjs](scripts/bank-balance-bridge.mjs)
 - [scripts/bankscan](scripts/bankscan)
 - [skills/bank-balance-bridge/SKILL.md](skills/bank-balance-bridge/SKILL.md)
 
-## Часть 1. Работа со скриптами без Codex
+## Part 1. Using the Scripts Without Codex
 
-### Что умеет bridge
+### What the bridge does
 
-- работает с `alpha`, `vtb` и `tbank`;
-- поднимает отдельные persistent bridge-профили Chrome;
-- открывает страницы банков и подключается к ним через CDP;
-- ждёт ручную авторизацию, если банк требует логин;
-- извлекает остатки по счетам и картам;
-- для кредитных карт дополнительно достаёт долг, доступно, лимит, сроки платежа и льготный период, когда эти данные есть на странице деталей;
-- пишет summary и raw scan-файлы вне репозитория;
-- по умолчанию закрывает bridge-Chrome в конце `sync`.
+- works with `alpha`, `vtb`, and `tbank`;
+- launches separate persistent Chrome bridge profiles;
+- opens bank pages and connects to them through CDP;
+- waits for manual authentication if a bank requires login;
+- extracts balances for accounts and cards;
+- for credit cards, also extracts debt, available amount, limit, payment due dates, and grace-period details when those fields are present on the details page;
+- writes summary and raw scan files outside the repository;
+- closes bridge Chrome by default at the end of `sync`.
 
-Целевые страницы:
-- Альфа: `https://web.alfabank.ru/dashboard`
-- ВТБ: `https://online.vtb.ru/home/all-products`
-- Т-Банк: `https://www.tbank.ru/mybank/`
+Target pages:
+- Alfa: `https://web.alfabank.ru/dashboard`
+- VTB: `https://online.vtb.ru/home/all-products`
+- T-Bank: `https://www.tbank.ru/mybank/`
 
-### Что внутри репозитория
+### What is in the repository
 
 ```text
 .
@@ -42,64 +42,64 @@
             └── openai.yaml
 ```
 
-Ключевые файлы:
-- [scripts/bank-balance-bridge.mjs](scripts/bank-balance-bridge.mjs) — основной bridge для Альфы, ВТБ и Т-Банка
-- [scripts/bankscan](scripts/bankscan) — короткий wrapper для запуска из любой папки
-- [scripts/banktree](scripts/banktree) — helper для локальной работы с `git worktree`
+Key files:
+- [scripts/bank-balance-bridge.mjs](scripts/bank-balance-bridge.mjs) — main bridge for Alfa, VTB, and T-Bank
+- [scripts/bankscan](scripts/bankscan) — short wrapper for launching from any directory
+- [scripts/banktree](scripts/banktree) — helper for local `git worktree` workflows
 
-### Требования
+### Requirements
 
 - macOS
 - Node.js `>=22`
 - Google Chrome
-- `zsh` для wrapper-скрипта `bankscan`
+- `zsh` for the `bankscan` wrapper script
 
-### Где хранятся данные
+### Where data is stored
 
-Рабочее состояние и результаты лежат вне репозитория:
+Runtime state and results are stored outside the repository:
 - `~/.codex/state/bank-balance-bridge/balances-summary.json`
 - `~/.codex/state/bank-balance-bridge/output/*.json`
 - `~/.codex/state/bank-balance-bridge/profiles/alpha`
 - `~/.codex/state/bank-balance-bridge/profiles/tbank`
 - `~/.codex/state/bank-balance-bridge/profiles/vtb`
 
-Это сделано специально, чтобы не хранить реальные банковские данные в git-репозитории.
+This is intentional so real banking data never lives in git.
 
-В summary:
-- `banks.<bank>.balances` содержит общий список найденных балансов;
-- `banks.<bank>.creditCards` содержит расширенные данные по кредиткам: долг, доступно, лимит, сроки платежа, льготный период и связанные маски карт.
+In the summary:
+- `banks.<bank>.balances` contains the general list of discovered balances;
+- `banks.<bank>.creditCards` contains extended credit-card details: debt, available amount, limit, payment due dates, grace period, and related masked card numbers.
 
-### Быстрый старт
+### Quick start
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
 node scripts/bank-balance-bridge.mjs open all
 ```
 
-В открывшихся bridge-окнах Chrome войдите в банки один раз.
+In the bridge Chrome windows that open, sign in to the banks once.
 
-После этого обычный запуск:
+After that, the normal run is:
 
 ```bash
 node scripts/bank-balance-bridge.mjs sync all
 ```
 
-Или короткой командой:
+Or with the short command:
 
 ```bash
 bankscan
 ```
 
-По умолчанию `sync` и `bankscan`:
-- открывают нужные окна;
-- ждут, если требуется логин;
-- сканируют банки;
-- закрывают bridge-Chrome.
+By default, `sync` and `bankscan`:
+- open the required windows;
+- wait if login is required;
+- scan the banks;
+- close bridge Chrome.
 
-### Команда `bankscan`
+### The `bankscan` command
 
-Основные варианты:
+Common variants:
 
 ```bash
 bankscan
@@ -113,28 +113,28 @@ bankscan --no-close-browser
 bankscan --no-wait-for-login
 ```
 
-Поведение wrapper:
-- без аргументов: `sync all`
+Wrapper behavior:
+- with no arguments: `sync all`
 - `alpha|vtb|tbank|all`: `sync <bank>`
-- любые остальные аргументы: прямой passthrough в `bank-balance-bridge.mjs`
+- any other arguments: direct passthrough to `bank-balance-bridge.mjs`
 
-### Установка глобальной команды
+### Installing the global command
 
-Если `~/Documents/MyScripts` уже добавлен в `PATH`, удобнее всего сделать symlink:
+If `~/Documents/MyScripts` is already in `PATH`, the most convenient option is a symlink:
 
 ```bash
 ln -sf "/Users/bulatmotygullin/Documents/BankScan/scripts/bankscan" "$HOME/Documents/MyScripts/bankscan"
 ```
 
-Если текущий shell ещё не видит команду:
+If the current shell still does not see the command:
 
 ```bash
 source ~/.zshrc
 ```
 
-### npm-скрипты
+### npm scripts
 
-Из корня репозитория доступны:
+Available from the repository root:
 
 ```bash
 npm run open
@@ -148,28 +148,28 @@ npm run help
 npm run worktree -- help
 ```
 
-### Локальная разработка через `git worktree`
+### Local development with `git worktree`
 
-Для этого проекта основной checkout остаётся в:
+For this project, the primary checkout stays at:
 
 ```text
 /Users/bulatmotygullin/Documents/BankScan
 ```
 
-Все дополнительные `worktree` для feature-веток должны лежать в одной общей папке внутри `Documents`:
+All additional `worktree` checkouts for feature branches must live under a single shared directory inside `Documents`:
 
 ```text
 /Users/bulatmotygullin/Documents/BankScan/worktrees
 ```
 
-Правила:
-- `main` держим в основном checkout, а не в отдельном feature-worktree;
-- одна фича = одна локальная ветка = один отдельный `worktree`;
-- не создаём отдельную соседнюю папку в `~/Documents` вроде `BankScan-worktrees`;
-- feature-ветки нужны только для локальной разработки и не пушатся на GitHub;
-- после завершения фичи сначала валидируем изменения в её `worktree`, потом согласуем merge в `main`, и только после локального merge можно публиковать обновлённый `main`, если это действительно нужно.
+Rules:
+- keep `main` in the primary checkout, not in a separate feature worktree;
+- one feature = one local branch = one separate `worktree`;
+- do not create a neighboring folder in `~/Documents` such as `BankScan-worktrees`;
+- feature branches are for local development only and are not pushed to GitHub;
+- after finishing a feature, validate the changes in its `worktree` first, then get approval before merging into `main`; only after the local merge should an updated `main` be published, if that is actually needed.
 
-Базовые команды:
+Basic commands:
 
 ```bash
 scripts/banktree root
@@ -178,64 +178,64 @@ scripts/banktree list
 scripts/banktree remove feature/vtb-parser
 ```
 
-То же через npm:
+The same through npm:
 
 ```bash
 npm run worktree -- add feature/vtb-parser
 ```
 
-Важно про symlink и тесты:
-- `~/Documents/MyScripts/bankscan` должен оставаться привязанным к стабильному checkout на `main`;
-- если меняете wrapper или bridge в feature-worktree, запускайте [scripts/bankscan](scripts/bankscan) или `node scripts/bank-balance-bridge.mjs` прямо из этого `worktree`, а не через глобальный symlink;
-- symlink `~/.codex/skills/bank-balance-bridge` по умолчанию тоже лучше держать на `main`; временно переключать его на feature-worktree имеет смысл только если вы осознанно тестируете изменения skill-файлов.
+Important notes about symlinks and testing:
+- `~/Documents/MyScripts/bankscan` should stay pointed at the stable checkout on `main`;
+- if you change the wrapper or bridge in a feature worktree, run [scripts/bankscan](scripts/bankscan) or `node scripts/bank-balance-bridge.mjs` directly from that `worktree`, not through the global symlink;
+- the `~/.codex/skills/bank-balance-bridge` symlink should also usually stay on `main`; temporarily repointing it to a feature worktree only makes sense if you are intentionally testing skill-file changes.
 
-### Безопасность
+### Security
 
-- не коммитьте `balances-summary.json` и raw scan-файлы;
-- не храните в репозитории реальные остатки, токены, cookies и экспортированные страницы;
-- используйте bridge-профили только для этой автоматизации;
-- не держите debug-enabled Chrome включённым без необходимости;
-- не привязывайте bridge к стандартному `~/Library/Application Support/Google/Chrome`: Chrome 136+ игнорирует remote debugging в standard user data dir.
+- do not commit `balances-summary.json` or raw scan files;
+- do not store real balances, tokens, cookies, or exported pages in the repository;
+- use bridge profiles only for this automation;
+- do not leave debug-enabled Chrome running longer than needed;
+- do not point the bridge at the standard `~/Library/Application Support/Google/Chrome`: Chrome 136+ ignores remote debugging when started against the standard user data directory.
 
-### Ограничения
+### Limitations
 
-- банки могут менять верстку и ломать эвристики;
-- Т-Банк сканируется с главного экрана интернет-банка `https://www.tbank.ru/mybank/`, где банк показывает карты и счета после авторизации;
-- ВТБ особенно чувствителен к reload/navigation, поэтому в bridge для него уже есть специальное поведение;
-- успешный скан зависит от того, что авторизация завершена именно в bridge-профиле;
-- если банк сам истёк сессию на сервере, автоматизация не обойдёт повторный логин.
+- banks can change their markup and break the extraction heuristics;
+- T-Bank is scanned from the main internet-bank screen at `https://www.tbank.ru/mybank/`, where the bank shows cards and accounts after login;
+- VTB is especially sensitive to reload/navigation, so the bridge already contains dedicated handling for it;
+- a successful scan depends on authentication being completed inside the bridge profile itself;
+- if the bank expires the session server-side, the automation cannot bypass a new login.
 
-## Часть 2. Skill для Codex
+## Part 2. Codex Skill
 
-В репозитории лежит локальная копия актуального skill:
+The repository includes a local copy of the current skill:
 - [skills/bank-balance-bridge/SKILL.md](skills/bank-balance-bridge/SKILL.md)
 - [skills/bank-balance-bridge/agents/openai.yaml](skills/bank-balance-bridge/agents/openai.yaml)
 
-Если хотите, чтобы Codex использовал именно репозиторную версию skill, а не внешнюю копию, можно сделать symlink:
+If you want Codex to use the repository version of the skill instead of an external copy, you can create a symlink:
 
 ```bash
 rm -rf "$HOME/.codex/skills/bank-balance-bridge"
 ln -s "/Users/bulatmotygullin/Documents/BankScan/skills/bank-balance-bridge" "$HOME/.codex/skills/bank-balance-bridge"
 ```
 
-После этого в Codex можно просить, например:
+After that, in Codex you can ask, for example:
 
 ```text
-Используй $bank-balance-bridge и проверь остатки
+Use $bank-balance-bridge and check the balances
 ```
 
-или просто:
+or simply:
 
 ```text
-Проверь остатки в Альфе, ВТБ и Т-Банке
+Check balances in Alfa, VTB, and T-Bank
 ```
 
-Ожидаемый workflow для Codex:
-- использовать `bankscan` как основной entrypoint;
-- ждать ручную авторизацию, если нужна;
-- читать результат из `~/.codex/state/bank-balance-bridge/balances-summary.json`;
-- для кредитных карт читать не только `balances`, но и `creditCards`;
-- не просить пользователя передавать пароли, SMS-коды, cookies или токены;
-- для изменений в репозитории держать одну фичу в одной локальной ветке и в одном отдельном `worktree` под `/Users/bulatmotygullin/Documents/BankScan/worktrees`;
-- не пушить feature-ветки;
-- перед merge завершённой фичи в `main` сначала согласовывать это с пользователем.
+Expected workflow for Codex:
+- use `bankscan` as the main entry point;
+- wait for manual authentication if needed;
+- read the result from `~/.codex/state/bank-balance-bridge/balances-summary.json`;
+- for credit cards, read not only `balances` but also `creditCards`;
+- do not ask the user to share passwords, SMS codes, cookies, or tokens;
+- for repository changes, keep one feature in one local branch and one separate `worktree` under `/Users/bulatmotygullin/Documents/BankScan/worktrees`;
+- do not push feature branches;
+- ask the user before merging a finished feature into `main`.
