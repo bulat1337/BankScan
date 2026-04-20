@@ -4,17 +4,32 @@ set -euo pipefail
 
 SCRIPT_DIR="${0:P:h}"
 BRIDGE_SCRIPT="$SCRIPT_DIR/bank-balance-bridge.mjs"
+EXTRA_SYNC_ARGS=()
+HAS_EXPLICIT_WAIT_FLAG=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --wait-for-login|--no-wait-for-login)
+      HAS_EXPLICIT_WAIT_FLAG=1
+      break
+      ;;
+  esac
+done
+
+if [[ $HAS_EXPLICIT_WAIT_FLAG -eq 0 ]]; then
+  EXTRA_SYNC_ARGS+=(--wait-for-login)
+fi
 
 if [[ $# -eq 0 ]]; then
-  exec node "$BRIDGE_SCRIPT" sync all
+  exec node "$BRIDGE_SCRIPT" sync all "${EXTRA_SYNC_ARGS[@]}"
 fi
 
 case "$1" in
   alpha|vtb|tbank|all)
-    exec node "$BRIDGE_SCRIPT" sync "$@"
+    exec node "$BRIDGE_SCRIPT" sync "$@" "${EXTRA_SYNC_ARGS[@]}"
     ;;
   --*)
-    exec node "$BRIDGE_SCRIPT" sync all "$@"
+    exec node "$BRIDGE_SCRIPT" sync all "$@" "${EXTRA_SYNC_ARGS[@]}"
     ;;
   *)
     exec node "$BRIDGE_SCRIPT" "$@"

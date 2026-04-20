@@ -2871,7 +2871,8 @@ async function waitForLoginCompletion(banks, options, initialResults) {
 
   console.log(
     `Waiting for authorization in Chrome: ${Array.from(pendingIds).join(', ')}. ` +
-      'Finish login in the opened bank window. Press Ctrl+C to stop waiting.',
+      'Finish login in the opened bank window and the scan will resume automatically. ' +
+      'No extra terminal command is required. Press Ctrl+C to stop waiting.',
   );
 
   while (pendingIds.size > 0) {

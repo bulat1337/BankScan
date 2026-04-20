@@ -131,6 +131,7 @@ If you need to test wrapper or skill changes from a feature worktree, run the fi
 The current expected behavior of `sync` and `bankscan` is:
 - open bridge Chrome windows when needed
 - wait for manual login if the bank returns `login_required`
+- keep the same running command alive until authorization finishes when possible, instead of requiring a second user message
 - rescan automatically after login completes
 - close the bridge Chrome windows at the end by default
 

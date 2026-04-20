@@ -94,6 +94,7 @@ bankscan
 By default, `sync` and `bankscan`:
 - open the required windows;
 - wait if login is required;
+- keep the same running command alive until login completes, so no second command is needed after authorization;
 - scan the banks;
 - close bridge Chrome.
 
@@ -116,6 +117,7 @@ bankscan --no-wait-for-login
 Wrapper behavior:
 - with no arguments: `sync all`
 - `alpha|vtb|tbank|all`: `sync <bank>`
+- for those sync-style entrypoints, `bankscan` explicitly keeps `--wait-for-login` enabled unless `--no-wait-for-login` is passed
 - any other arguments: direct passthrough to `bank-balance-bridge.mjs`
 
 ### Installing the global command
@@ -233,6 +235,7 @@ Check balances in Alfa, VTB, and T-Bank
 Expected workflow for Codex:
 - use `bankscan` as the main entry point;
 - wait for manual authentication if needed;
+- if `bankscan` is still running and waiting for authorization, keep that same run alive and do not ask the user to send a second “I authorized” message;
 - read the result from `~/.codex/state/bank-balance-bridge/balances-summary.json`;
 - for credit cards, read not only `balances` but also `creditCards`;
 - do not ask the user to share passwords, SMS codes, cookies, or tokens;

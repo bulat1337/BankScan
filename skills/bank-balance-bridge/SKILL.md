@@ -23,15 +23,17 @@ For repo development work, keep the primary checkout on `main` at `/Users/bulatm
 2. Low-level CLI remains available at [../../scripts/bank-balance-bridge.mjs](../../scripts/bank-balance-bridge.mjs).
 3. Preferred first-time setup:
    - `bankscan open all`
-4. Tell the user to authorize once in the opened dedicated bridge profiles. After that, use:
+4. Tell the user to authorize in the opened dedicated bridge profiles if the bank asks for login. Do not ask the user to send a second “I authorized” message while the same `bankscan` run is still waiting.
+5. Keep the same `bankscan` process alive while it waits for `login_required` banks. Poll the running command until it finishes, then continue with the same turn.
+6. After that, use:
    - `bankscan`
    - or `bankscan alpha`
    - or `bankscan tbank`
    - or `bankscan vtb`
-5. `bankscan` waits for manual authorization automatically when a bank returns `login_required`, then continues scanning on its own.
-6. By default `bankscan` closes the bridge Chrome windows at the end. Use `bankscan --no-close-browser` only when the user explicitly wants to keep them open.
-7. Read `banks.<bankId>.balances` from the summary JSON and, for credit cards, also read `banks.<bankId>.creditCards` instead of asking the user to paste page contents.
-8. Only use `bind-profile` for an advanced case where the user already has a custom non-standard Chrome `--user-data-dir`. Do not bind to the standard Chrome data dir.
+7. `bankscan` waits for manual authorization automatically when a bank returns `login_required`, then continues scanning on its own.
+8. By default `bankscan` closes the bridge Chrome windows at the end. Use `bankscan --no-close-browser` only when the user explicitly wants to keep them open.
+9. Read `banks.<bankId>.balances` from the summary JSON and, for credit cards, also read `banks.<bankId>.creditCards` instead of asking the user to paste page contents.
+10. Only use `bind-profile` for an advanced case where the user already has a custom non-standard Chrome `--user-data-dir`. Do not bind to the standard Chrome data dir.
 
 ## Commands
 
@@ -58,6 +60,7 @@ The summary keeps generic balances in `banks.<bankId>.balances` and richer credi
 - Prefer the persistent dedicated bridge profile. Once the user logs in there once, future runs should reuse the same session until the bank expires it.
 - Prefer `bankscan` for normal use.
 - `bankscan` and `sync` should wait for manual login by default and should close the bridge Chrome windows at the end unless `--no-close-browser` is explicitly requested.
+- When `bankscan` prints that it is waiting for authorization, keep that same command running and wait for it to finish. Do not require a separate follow-up user message if the command is still alive.
 - If the user is bound to `~/Library/Application Support/Google/Chrome`, explain that this is not supported by Chrome 136+ and switch them back to the dedicated bridge profile.
 - Only mention `bind-profile` when the user truly has a custom non-standard Chrome `user-data-dir`.
 - If `profiles` returns entries, treat them as informational only unless a custom `--user-data-dir` is explicitly provided.
