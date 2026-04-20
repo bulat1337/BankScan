@@ -6,3 +6,20 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local AI / agent instructions and tool configs
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+COPILOT.md
+.claude/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.roo/
+.rooignore
+.continue/
+.amazonq/
+.opencode/
+.aider*

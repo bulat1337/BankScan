@@ -1,25 +1,28 @@
 {
-  "name": "alpha-api-local-bridge",
+  "name": "bankscan",
   "version": "0.1.0",
-  "description": "Local bridge for extracting balance candidates from an authenticated Alfa-Bank dashboard tab via Chrome DevTools Protocol.",
+  "description": "Local bridge for extracting Alfa-Bank and VTB balances from authenticated web sessions via Chrome DevTools Protocol.",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
-  "repository": {
-    "type": "git",
-    "url": "git@github.com:bulat1337/AlphaApi.git"
-  },
   "keywords": [
     "alfabank",
+    "vtb",
     "banking",
     "chrome-devtools-protocol",
     "local-automation"
   ],
   "scripts": {
-    "scan": "node scripts/alpha-dashboard-read.mjs",
-    "scan:reload": "node scripts/alpha-dashboard-read.mjs --reload"
+    "open": "node scripts/bank-balance-bridge.mjs open all",
+    "scan": "node scripts/bank-balance-bridge.mjs scan all",
+    "scan:reload": "node scripts/bank-balance-bridge.mjs scan all --reload",
+    "sync": "node scripts/bank-balance-bridge.mjs sync all",
+    "sync:alpha": "node scripts/bank-balance-bridge.mjs sync alpha",
+    "sync:vtb": "node scripts/bank-balance-bridge.mjs sync vtb",
+    "help": "node scripts/bank-balance-bridge.mjs help",
+    "legacy:alpha": "node scripts/alpha-dashboard-read.mjs"
   }
 }

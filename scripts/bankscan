@@ -1,0 +1,22 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR="${0:P:h}"
+BRIDGE_SCRIPT="$SCRIPT_DIR/bank-balance-bridge.mjs"
+
+if [[ $# -eq 0 ]]; then
+  exec node "$BRIDGE_SCRIPT" sync all
+fi
+
+case "$1" in
+  alpha|vtb|all)
+    exec node "$BRIDGE_SCRIPT" sync "$@"
+    ;;
+  --*)
+    exec node "$BRIDGE_SCRIPT" sync all "$@"
+    ;;
+  *)
+    exec node "$BRIDGE_SCRIPT" "$@"
+    ;;
+esac
