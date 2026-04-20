@@ -2,20 +2,34 @@
 
 Локальный репозиторий для чтения остатков из уже авторизованных веб-сессий Альфа-Банка и ВТБ через Chrome DevTools Protocol, без передачи логинов, паролей, cookies или токенов во внешние сервисы.
 
-Сейчас это основной source of truth для всей логики:
-- multi-bank bridge CLI;
-- короткая глобальная команда `bankscan`;
-- Codex skill `bank-balance-bridge`;
-- legacy alfa-only prototype.
+Основные entrypoints:
+- [scripts/bank-balance-bridge.mjs](/Users/bulatmotygullin/Documents/BankScan/scripts/bank-balance-bridge.mjs)
+- [scripts/bankscan](/Users/bulatmotygullin/Documents/BankScan/scripts/bankscan)
+- [skills/bank-balance-bridge/SKILL.md](/Users/bulatmotygullin/Documents/BankScan/skills/bank-balance-bridge/SKILL.md)
 
-## Что внутри
+## Часть 1. Работа со скриптами без Codex
+
+### Что умеет bridge
+
+- работает с `alpha` и `vtb`;
+- поднимает отдельные persistent bridge-профили Chrome;
+- открывает страницы банков и подключается к ним через CDP;
+- ждёт ручную авторизацию, если банк требует логин;
+- извлекает только остатки по счетам и картам;
+- пишет summary и raw scan-файлы вне репозитория;
+- по умолчанию закрывает bridge-Chrome в конце `sync`.
+
+Целевые страницы:
+- Альфа: `https://web.alfabank.ru/dashboard`
+- ВТБ: `https://online.vtb.ru/home/all-products`
+
+### Что внутри репозитория
 
 ```text
 .
 ├── README.md
 ├── package.json
 ├── scripts/
-│   ├── alpha-dashboard-read.mjs
 │   ├── bank-balance-bridge.mjs
 │   └── bankscan
 └── skills/
@@ -26,33 +40,17 @@
 ```
 
 Ключевые файлы:
-- [scripts/bank-balance-bridge.mjs](/Users/bulatmotygullin/Documents/BankScan/scripts/bank-balance-bridge.mjs) — основной bridge для Альфы и ВТБ.
-- [scripts/bankscan](/Users/bulatmotygullin/Documents/BankScan/scripts/bankscan) — короткий wrapper для запуска из любой папки.
-- [skills/bank-balance-bridge/SKILL.md](/Users/bulatmotygullin/Documents/BankScan/skills/bank-balance-bridge/SKILL.md) — локальная копия актуального Codex skill.
-- [scripts/alpha-dashboard-read.mjs](/Users/bulatmotygullin/Documents/BankScan/scripts/alpha-dashboard-read.mjs) — исходный alfa-only prototype, оставлен как legacy reference.
+- [scripts/bank-balance-bridge.mjs](/Users/bulatmotygullin/Documents/BankScan/scripts/bank-balance-bridge.mjs) — основной bridge для Альфы и ВТБ
+- [scripts/bankscan](/Users/bulatmotygullin/Documents/BankScan/scripts/bankscan) — короткий wrapper для запуска из любой папки
 
-## Что умеет bridge
-
-- работает с `alpha` и `vtb`;
-- поднимает отдельные persistent bridge-профили Chrome;
-- открывает страницы банков и подключается к ним через CDP;
-- ждёт ручную авторизацию, если банк требует логин;
-- извлекает только остатки по счетам и картам;
-- пишет summary и raw scan-файлы;
-- по умолчанию закрывает bridge-Chrome в конце `sync`.
-
-Целевые страницы:
-- Альфа: `https://web.alfabank.ru/dashboard`
-- ВТБ: `https://online.vtb.ru/home/all-products`
-
-## Требования
+### Требования
 
 - macOS
 - Node.js `>=22`
 - Google Chrome
 - `zsh` для wrapper-скрипта `bankscan`
 
-## Где хранятся данные
+### Где хранятся данные
 
 Рабочее состояние и результаты лежат вне репозитория:
 - `~/.codex/state/bank-balance-bridge/balances-summary.json`
@@ -62,7 +60,7 @@
 
 Это сделано специально, чтобы не хранить реальные банковские данные в git-репозитории.
 
-## Быстрый старт
+### Быстрый старт
 
 Из корня репозитория:
 
@@ -90,7 +88,7 @@ bankscan
 - сканируют банки;
 - закрывают bridge-Chrome.
 
-## Команда `bankscan`
+### Команда `bankscan`
 
 Основные варианты:
 
@@ -110,7 +108,7 @@ bankscan --no-wait-for-login
 - `alpha|vtb|all`: `sync <bank>`
 - любые остальные аргументы: прямой passthrough в `bank-balance-bridge.mjs`
 
-## Установка глобальной команды
+### Установка глобальной команды
 
 Если `~/Documents/MyScripts` уже добавлен в `PATH`, удобнее всего сделать symlink:
 
@@ -124,7 +122,7 @@ ln -sf "/Users/bulatmotygullin/Documents/BankScan/scripts/bankscan" "$HOME/Docum
 source ~/.zshrc
 ```
 
-## npm-скрипты
+### npm-скрипты
 
 Из корня репозитория доступны:
 
@@ -136,10 +134,24 @@ npm run sync
 npm run sync:alpha
 npm run sync:vtb
 npm run help
-npm run legacy:alpha
 ```
 
-## Codex Skill
+### Безопасность
+
+- не коммитьте `balances-summary.json` и raw scan-файлы;
+- не храните в репозитории реальные остатки, токены, cookies и экспортированные страницы;
+- используйте bridge-профили только для этой автоматизации;
+- не держите debug-enabled Chrome включённым без необходимости;
+- не привязывайте bridge к стандартному `~/Library/Application Support/Google/Chrome`: Chrome 136+ игнорирует remote debugging в standard user data dir.
+
+### Ограничения
+
+- банки могут менять верстку и ломать эвристики;
+- ВТБ особенно чувствителен к reload/navigation, поэтому в bridge для него уже есть специальное поведение;
+- успешный скан зависит от того, что авторизация завершена именно в bridge-профиле;
+- если банк сам истёк сессию на сервере, автоматизация не обойдёт повторный логин.
+
+## Часть 2. Skill для Codex
 
 В репозитории лежит локальная копия актуального skill:
 - [skills/bank-balance-bridge/SKILL.md](/Users/bulatmotygullin/Documents/BankScan/skills/bank-balance-bridge/SKILL.md)
@@ -152,21 +164,20 @@ rm -rf "$HOME/.codex/skills/bank-balance-bridge"
 ln -s "/Users/bulatmotygullin/Documents/BankScan/skills/bank-balance-bridge" "$HOME/.codex/skills/bank-balance-bridge"
 ```
 
-## Безопасность
+После этого в Codex можно просить, например:
 
-- не коммитьте `balances-summary.json` и raw scan-файлы;
-- не храните в репозитории реальные остатки, токены, cookies и экспортированные страницы;
-- используйте bridge-профили только для этой автоматизации;
-- не держите debug-enabled Chrome включённым без необходимости;
-- не привязывайте bridge к стандартному `~/Library/Application Support/Google/Chrome`: Chrome 136+ игнорирует remote debugging в standard user data dir.
+```text
+Используй $bank-balance-bridge и проверь остатки
+```
 
-## Ограничения
+или просто:
 
-- банки могут менять верстку и ломать эвристики;
-- ВТБ особенно чувствителен к reload/navigation, поэтому в bridge для него уже есть специальное поведение;
-- успешный скан зависит от того, что авторизация завершена именно в bridge-профиле;
-- если банк сам истёк сессию на сервере, автоматизация не обойдёт повторный логин.
+```text
+Проверь остатки в Альфе и ВТБ
+```
 
-## Legacy
-
-Старый alfa-only скрипт [scripts/alpha-dashboard-read.mjs](/Users/bulatmotygullin/Documents/BankScan/scripts/alpha-dashboard-read.mjs) сохранён для истории и точечной отладки, но основным инструментом теперь считается только `bank-balance-bridge.mjs` и `bankscan`.
+Ожидаемый workflow для Codex:
+- использовать `bankscan` как основной entrypoint;
+- ждать ручную авторизацию, если нужна;
+- читать результат из `~/.codex/state/bank-balance-bridge/balances-summary.json`;
+- не просить пользователя передавать пароли, SMS-коды, cookies или токены.

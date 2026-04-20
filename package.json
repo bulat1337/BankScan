@@ -22,7 +22,6 @@
     "sync": "node scripts/bank-balance-bridge.mjs sync all",
     "sync:alpha": "node scripts/bank-balance-bridge.mjs sync alpha",
     "sync:vtb": "node scripts/bank-balance-bridge.mjs sync vtb",
-    "help": "node scripts/bank-balance-bridge.mjs help",
-    "legacy:alpha": "node scripts/alpha-dashboard-read.mjs"
+    "help": "node scripts/bank-balance-bridge.mjs help"
   }
 }
