@@ -69,6 +69,7 @@ The summary keeps generic balances in `banks.<bankId>.balances` and richer credi
 - The script hardcodes Alfa entry at `https://web.alfabank.ru/dashboard`, VTB entry at `https://online.vtb.ru/home/all-products`, and T-Bank entry at `https://www.tbank.ru/mybank/`. T-Bank card and account extraction targets the main internet-bank screen after login; if the user is not authenticated, the bank redirects into its login flow and then back to `/mybank/`.
 - If Chrome is not found automatically, rerun with `--browser /absolute/path/to/browser`.
 - For repo changes, use one local feature branch per task and one separate worktree per feature branch under `/Users/bulatmotygullin/Documents/BankScan/worktrees`.
+- After editing the bridge, run `npm test` along with the syntax and help checks from `AGENTS.md`.
 - Keep `~/Documents/MyScripts/bankscan` and `~/.codex/skills/bank-balance-bridge` pointed at the stable `main` checkout unless the user explicitly wants temporary testing against a feature worktree.
 - Do not push feature branches to GitHub.
 - Ask the user before merging a completed feature branch into `main`.

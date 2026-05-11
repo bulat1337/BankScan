@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const DEFAULT_STATE_ROOT = path.join(os.homedir(), '.codex', 'state', 'bank-balance-bridge');
@@ -661,6 +662,10 @@ function isAuthLikeTitle(title) {
 }
 
 function isAuthLikeTarget(target) {
+  if (!target) {
+    return false;
+  }
+
   return isAuthLikeUrl(target.url) || isAuthLikeTitle(target.title);
 }
 
@@ -3085,8 +3090,8 @@ async function runUnbindProfile(bank, options) {
   console.log(`Config saved to ${configFile}`);
 }
 
-async function main() {
-  const { command, bankArg, extraArgs, options } = parseArgs(process.argv.slice(2));
+async function runCli(argv = process.argv.slice(2)) {
+  const { command, bankArg, extraArgs, options } = parseArgs(argv);
 
   if (command === 'help') {
     printHelp();
@@ -3127,7 +3132,40 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
+
+export {
+  BANKS,
+  DEFAULT_LOGIN_POLL_INTERVAL_MS,
+  DEFAULT_STATE_ROOT,
+  DEFAULT_WAIT_AFTER_OPEN_MS,
+  DEFAULT_WAIT_AFTER_RELOAD_MS,
+  DEFAULT_WATCH_INTERVAL_MS,
+  classifyScan,
+  dedupeCreditCards,
+  describeProfileMode,
+  getDebugUrl,
+  getPaths,
+  getProfileMode,
+  isAuthLikeTarget,
+  isAuthLikeTitle,
+  isAuthLikeUrl,
+  isRelevantBankTarget,
+  isStandardBrowserUserDataDir,
+  mergeResults,
+  parseArgs,
+  resolveBanks,
+  resolveDefaultUserDataDir,
+  resolveRuntimeBank,
+  resultsChanged,
+  runCli,
+  scoreTarget,
+  selectTarget,
+  shouldRetryTbankDashboardScan,
+  summarizeStatus,
+};

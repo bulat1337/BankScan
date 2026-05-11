@@ -3,9 +3,31 @@
 set -euo pipefail
 
 SCRIPT_DIR="${0:P:h}"
-REPO_ROOT="${SCRIPT_DIR:h}"
-WORKTREE_HOME="${BANKSCAN_WORKTREE_HOME:-$REPO_ROOT/worktrees}"
+SCRIPT_CHECKOUT="${SCRIPT_DIR:h}"
 MAIN_BRANCH="${BANKSCAN_MAIN_BRANCH:-main}"
+
+primary_checkout_for_branch() {
+  local branch="$1"
+  local current_worktree=""
+  local line
+
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *)
+        current_worktree="${line#worktree }"
+        ;;
+      branch\ refs/heads/$branch)
+        print -r -- "$current_worktree"
+        return 0
+        ;;
+    esac
+  done < <(git -C "$SCRIPT_CHECKOUT" worktree list --porcelain)
+
+  return 1
+}
+
+REPO_ROOT="${BANKSCAN_REPO_ROOT:-$(primary_checkout_for_branch "$MAIN_BRANCH" || print -r -- "$SCRIPT_CHECKOUT")}"
+WORKTREE_HOME="${BANKSCAN_WORKTREE_HOME:-$REPO_ROOT/worktrees}"
 
 usage() {
   cat <<EOF
