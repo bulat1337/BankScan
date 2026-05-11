@@ -146,6 +146,7 @@ npm run sync
 npm run sync:alpha
 npm run sync:tbank
 npm run sync:vtb
+npm test
 npm run help
 npm run worktree -- help
 ```

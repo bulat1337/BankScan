@@ -24,6 +24,7 @@
     "sync:alpha": "node scripts/bank-balance-bridge.mjs sync alpha",
     "sync:tbank": "node scripts/bank-balance-bridge.mjs sync tbank",
     "sync:vtb": "node scripts/bank-balance-bridge.mjs sync vtb",
+    "test": "node --test",
     "help": "node scripts/bank-balance-bridge.mjs help",
     "worktree": "zsh scripts/banktree"
   }

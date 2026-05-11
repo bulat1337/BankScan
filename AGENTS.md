@@ -147,6 +147,7 @@ After editing the main bridge or wrapper, run at least:
 
 ```bash
 node --check scripts/bank-balance-bridge.mjs
+npm test
 npm run help
 zsh -ic 'cd /tmp && which bankscan && bankscan help | sed -n "1,18p"'
 ```
